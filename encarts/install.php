@@ -113,8 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             $sqlContent = file_get_contents($sqlFile);
             
-            // Remover comentários SQL
-            $sqlContent = preg_replace('/--.*$/m', '', $sqlContent);
+            // Remover comentários SQL (mas manter USE statement)
+            $sqlContent = preg_replace('/^--.*$/m', '', $sqlContent);
             $sqlContent = preg_replace('/\/\*[\s\S]*?\*\//', '', $sqlContent);
             
             // Dividir em statements individuais
@@ -130,6 +130,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Ignorar comandos CREATE DATABASE (o banco já existe)
                 if (stripos($statement, 'CREATE DATABASE') !== false) {
                     continue;
+                }
+                
+                // Executar USE statement primeiro se existir
+                if (stripos(trim($statement), 'USE ') === 0) {
+                    try {
+                        $pdo->exec($statement);
+                        $successCount++;
+                        continue;
+                    } catch (PDOException $e) {
+                        // Se falhar o USE, continua tentando criar as tabelas
+                        // O banco já foi selecionado na conexão
+                    }
                 }
                 
                 try {
