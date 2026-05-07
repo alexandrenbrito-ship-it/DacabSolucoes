@@ -1,0 +1,190 @@
+# ============================================================
+# /encarts/.htaccess
+# Configurações Apache para Hostinger
+# Segurança, URLs limpas, compressão e cache
+# ============================================================
+
+# Ativar mod_rewrite
+RewriteEngine On
+
+# Definir base URL (ajuste se estiver em subdomínio)
+RewriteBase /encarts/
+
+# ============================================================
+# SEGURANÇA - Bloquear acesso direto a diretórios sensíveis
+# ============================================================
+
+# Bloquear acesso direto ao diretório config
+<IfModule mod_rewrite.c>
+    RewriteRule ^config/ - [F,L]
+</IfModule>
+
+# Bloquear acesso direto ao diretório classes
+<IfModule mod_rewrite.c>
+    RewriteRule ^classes/ - [F,L]
+</IfModule>
+
+# Bloquear acesso direto ao diretório sql
+<IfModule mod_rewrite.c>
+    RewriteRule ^sql/ - [F,L]
+</IfModule>
+
+# Bloquear acesso a arquivos sensíveis
+<FilesMatch "^\.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(sql|log|ini|sh)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ============================================================
+# DESATIVAR EXIBIÇÃO DE ERROS PHP EM PRODUÇÃO
+# ============================================================
+php_flag display_errors Off
+php_flag log_errors On
+php_value error_log /home/u*/public_html/encarts/logs/php_errors.log
+
+# ============================================================
+# PREVENIR LISTAGEM DE DIRETÓRIOS
+# ============================================================
+Options -Indexes
+
+# ============================================================
+# REDIRECIONAMENTOS E URLs LIMPAS
+# ============================================================
+
+# Forçar HTTPS (descomente se tiver SSL ativo)
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Redirecionar www para não-www (opcional)
+# RewriteCond %{HTTP_HOST} ^www\.(.*)$ [NC]
+# RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+
+# ============================================================
+# CABEÇALHOS DE SEGURANÇA
+# ============================================================
+
+<IfModule mod_headers.c>
+    # Prevenir clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # Prevenir MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # XSS Protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Referrer Policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Content Security Policy (ajuste conforme necessário)
+    # Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data: https:;"
+</IfModule>
+
+# ============================================================
+# COMPRESSÃO GZIP
+# ============================================================
+
+<IfModule mod_deflate.c>
+    # Comprimir HTML, CSS, JavaScript, JSON, SVG
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE text/javascript
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE text/xml
+    
+    # Nível de compressão (1-9, sendo 9 o máximo)
+    DeflateCompressionLevel 6
+</IfModule>
+
+# ============================================================
+# CACHE DE ASSETS (CSS, JS, IMAGENS, FONTES)
+# ============================================================
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # Imagens - 1 ano
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+    
+    # Fontes - 1 ano
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/ttf "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+    
+    # CSS - 1 mês
+    ExpiresByType text/css "access plus 1 month"
+    
+    # JavaScript - 1 mês
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    
+    # HTML - Sem cache ou cache curto
+    ExpiresByType text/html "access plus 0 seconds"
+    ExpiresByType application/json "access plus 0 seconds"
+</IfModule>
+
+# Cache-Control headers alternativos
+<IfModule mod_headers.c>
+    <FilesMatch "\.(jpg|jpeg|png|gif|webp|svg|ico|woff2|woff|ttf)$">
+        Header set Cache-Control "max-age=31536000, public, immutable"
+    </FilesMatch>
+    
+    <FilesMatch "\.(css|js)$">
+        Header set Cache-Control "max-age=2592000, public"
+    </FilesMatch>
+    
+    <FilesMatch "\.(html|php|json)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# ============================================================
+# UPLOADS - Proteger listagem mas permitir acesso às imagens
+# ============================================================
+
+<Directory "/assets/uploads">
+    Options -Indexes
+    <FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
+        Order allow,deny
+        Allow from all
+    </FilesMatch>
+</Directory>
+
+# Prevenir execução de PHP no diretório de uploads
+<FilesMatch "\.php$">
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+
+# ============================================================
+# CHARSET E TIPO MIME
+# ============================================================
+
+AddDefaultCharset UTF-8
+AddType application/javascript js
+AddType application/json json
+AddType image/webp webp
+AddType font/woff2 woff2
+
+# ============================================================
+# ERROR PAGES PERSONALIZADAS (opcional)
+# ============================================================
+# ErrorDocument 400 /encarts/error.php?code=400
+# ErrorDocument 401 /encarts/error.php?code=401
+# ErrorDocument 403 /encarts/error.php?code=403
+# ErrorDocument 404 /encarts/error.php?code=404
+# ErrorDocument 500 /encarts/error.php?code=500
