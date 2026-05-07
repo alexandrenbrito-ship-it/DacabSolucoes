@@ -11,7 +11,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 // Pre-flight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -21,11 +21,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Carregar classes necessárias
 require_once dirname(__DIR__) . '/classes/Database.php';
-require_once dirname(__DIR__) . '/classes/Auth.php';
+require_once dirname(__DIR__) . '/classes/ClerkAuth.php';
 require_once dirname(__DIR__) . '/classes/Encart.php';
 require_once dirname(__DIR__) . '/classes/User.php';
 
-$auth = new Auth();
 $encartModel = new Encart();
 $userModel = new User();
 
@@ -33,14 +32,12 @@ $userModel = new User();
 $action = $_GET['action'] ?? '';
 
 // Permitir GET sem auth apenas para ação 'public'
-if ($action !== 'public' && !$auth->isAuthenticated()) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Não autorizado. Faça login.']);
-    exit;
+if ($action !== 'public') {
+    $user = ClerkAuth::requireAuth();
+    $userId = (int)$user['id'];
+} else {
+    $userId = 0;
 }
-
-$user = $auth->getCurrentUser();
-$userId = $user ? (int)$user['id'] : 0;
 
 switch ($_SERVER['REQUEST_METHOD']) {
     case 'GET':

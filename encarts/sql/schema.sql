@@ -12,48 +12,154 @@
 -- antes de executar este script. Use: u624766619_encartes
 -- ============================================================
 
--- Nota: Não é necessário criar o banco aqui, pois ele já existe
--- O install.php seleciona o banco automaticamente baseado na configuração
+-- Seleciona o banco de dados (necessário para importação manual)
+-- Substitua 'u624766619_encartes' pelo nome do seu banco se for diferente
+USE `u624766619_encartes`;
+
+-- ============================================================
+-- TABELA: roles
+-- Perfis de acesso do sistema (Admin, User, Editor)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `roles` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(50) NOT NULL UNIQUE COMMENT 'Nome do role: admin, user, editor',
+    `description` VARCHAR(255) COMMENT 'Descrição das permissões',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX `idx_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Perfis de acesso do sistema';
+
+-- ============================================================
+-- TABELA: plans
+-- Planos de assinatura com limites de uso
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `plans` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL COMMENT 'Nome exibido do plano',
+    `slug` VARCHAR(50) NOT NULL UNIQUE COMMENT 'Identificador único: free, pro, enterprise',
+    `price` DECIMAL(10,2) DEFAULT 0.00 COMMENT 'Preço mensal',
+    `max_encarts` INT UNSIGNED DEFAULT 3 COMMENT 'Quantidade máxima de encartes',
+    `max_uploads` INT UNSIGNED DEFAULT 5 COMMENT 'Quantidade máxima de uploads na galeria pessoal',
+    `is_active` TINYINT(1) DEFAULT 1 COMMENT 'Plano ativo para novas assinaturas',
+    `features` JSON COMMENT 'Características extras em JSON',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    INDEX `idx_slug` (`slug`),
+    INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Planos de assinatura';
 
 -- ============================================================
 -- TABELA: users
 -- Armazena os usuários do sistema com informações de conta e plano
+-- Integração com Clerk para autenticação
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `users` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `clerk_user_id` VARCHAR(255) UNIQUE NOT NULL COMMENT 'ID único do usuário no Clerk (ex: user_2abc123xyz)',
+    `clerk_email` VARCHAR(255) NOT NULL COMMENT 'Email vindo do Clerk',
     `name` VARCHAR(100) NOT NULL COMMENT 'Nome completo do usuário',
-    `email` VARCHAR(255) NOT NULL UNIQUE COMMENT 'E-mail único para login',
-    `password_hash` VARCHAR(255) NOT NULL COMMENT 'Hash da senha (bcrypt)',
-    `plan` ENUM('free', 'pro') DEFAULT 'free' COMMENT 'Tipo de plano: free ou pro',
+    `email` VARCHAR(255) NOT NULL UNIQUE COMMENT 'E-mail único para referência',
+    `role_id` INT UNSIGNED DEFAULT 2 COMMENT 'Perfil de acesso (1=admin, 2=user, 3=editor)',
+    `plan_id` INT UNSIGNED DEFAULT 1 COMMENT 'Plano de assinatura atual',
+    `subscription_status` ENUM('active', 'cancelled', 'expired', 'trial') DEFAULT 'active' COMMENT 'Status da assinatura',
+    `subscription_expires_at` DATETIME NULL COMMENT 'Data de expiração da assinatura',
     `avatar_url` VARCHAR(500) DEFAULT NULL COMMENT 'URL da imagem de perfil',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Data de criação da conta',
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Última atualização',
     `last_login` TIMESTAMP NULL DEFAULT NULL COMMENT 'Último login realizado',
     `is_active` TINYINT(1) DEFAULT 1 COMMENT 'Conta ativa (1) ou desativada (0)',
     
+    FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`plan_id`) REFERENCES `plans`(`id`) ON DELETE SET DEFAULT,
+    INDEX `idx_clerk_user_id` (`clerk_user_id`),
     INDEX `idx_email` (`email`),
-    INDEX `idx_plan` (`plan`),
+    INDEX `idx_role` (`role_id`),
+    INDEX `idx_plan` (`plan_id`),
     INDEX `idx_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tabela de usuários do sistema';
 
 -- ============================================================
--- TABELA: sessions
--- Gerencia sessões ativas dos usuários com tokens seguros
+-- TABELA: user_sync_log
+-- Registro de sincronização de usuários via webhook do Clerk
 -- ============================================================
-CREATE TABLE IF NOT EXISTS `sessions` (
+CREATE TABLE IF NOT EXISTS `user_sync_log` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `user_id` INT UNSIGNED NOT NULL COMMENT 'ID do usuário dono da sessão',
-    `token` VARCHAR(255) NOT NULL UNIQUE COMMENT 'Token de sessão criptograficamente seguro',
-    `ip_address` VARCHAR(45) NOT NULL COMMENT 'IP do cliente (IPv4 ou IPv6)',
-    `user_agent` TEXT COMMENT 'User agent do navegador',
-    `expires_at` TIMESTAMP NOT NULL COMMENT 'Data de expiração da sessão',
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Data de criação da sessão',
+    `clerk_user_id` VARCHAR(255) NOT NULL COMMENT 'ID do usuário no Clerk',
+    `event_type` VARCHAR(50) NOT NULL COMMENT 'Tipo de evento: user.created, user.updated, user.deleted',
+    `payload` JSON COMMENT 'Payload completo do webhook',
+    `synced_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Data da sincronização',
+    
+    INDEX `idx_clerk_user_id` (`clerk_user_id`),
+    INDEX `idx_event_type` (`event_type`),
+    INDEX `idx_synced_at` (`synced_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Log de sincronização de usuários via Clerk webhook';
+
+-- ============================================================
+-- TABELA: gallery_categories
+-- Categorias para organização da galeria pública
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `gallery_categories` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `name` VARCHAR(100) NOT NULL COMMENT 'Nome da categoria',
+    `slug` VARCHAR(100) UNIQUE NOT NULL COMMENT 'Slug único para URL',
+    `description` TEXT COMMENT 'Descrição da categoria',
+    `sort_order` INT DEFAULT 0 COMMENT 'Ordem de exibição',
+    `is_active` TINYINT(1) DEFAULT 1 COMMENT 'Categoria ativa',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX `idx_slug` (`slug`),
+    INDEX `idx_sort` (`sort_order`),
+    INDEX `idx_is_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Categorias da galeria pública';
+
+-- ============================================================
+-- TABELA: public_gallery_items
+-- Itens da galeria pública (gerenciada pelos administradores)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `public_gallery_items` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `category_id` INT UNSIGNED COMMENT 'Categoria da imagem',
+    `title` VARCHAR(255) COMMENT 'Título descritivo',
+    `file_path` VARCHAR(500) NOT NULL COMMENT 'Caminho do arquivo no servidor',
+    `file_type` VARCHAR(50) DEFAULT 'image' COMMENT 'Tipo de arquivo',
+    `file_size` INT UNSIGNED COMMENT 'Tamanho em bytes',
+    `width` INT UNSIGNED COMMENT 'Largura em pixels',
+    `height` INT UNSIGNED COMMENT 'Altura em pixels',
+    `tags` VARCHAR(255) COMMENT 'Tags separadas por vírgula',
+    `is_active` TINYINT(1) DEFAULT 1 COMMENT 'Item ativo',
+    `created_by` INT UNSIGNED COMMENT 'ID do admin que fez upload',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (`category_id`) REFERENCES `gallery_categories`(`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON DELETE SET NULL,
+    INDEX `idx_category` (`category_id`),
+    INDEX `idx_is_active` (`is_active`),
+    INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Itens da galeria pública';
+
+-- ============================================================
+-- TABELA: user_galleries
+-- Galeria pessoal dos usuários (uploads privados)
+-- Substitui/enriquece a tabela user_uploads
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `user_galleries` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT UNSIGNED NOT NULL COMMENT 'ID do usuário proprietário',
+    `title` VARCHAR(255) COMMENT 'Título descritivo da imagem',
+    `file_path` VARCHAR(500) NOT NULL COMMENT 'Caminho do arquivo no servidor',
+    `original_name` VARCHAR(255) NOT NULL COMMENT 'Nome original do arquivo',
+    `file_type` VARCHAR(50) DEFAULT 'image' COMMENT 'Tipo de arquivo',
+    `file_size` INT UNSIGNED NOT NULL COMMENT 'Tamanho em bytes',
+    `width` INT UNSIGNED COMMENT 'Largura em pixels',
+    `height` INT UNSIGNED COMMENT 'Altura em pixels',
+    `is_active` TINYINT(1) DEFAULT 1 COMMENT 'Imagem ativa',
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-    INDEX `idx_token` (`token`),
     INDEX `idx_user_id` (`user_id`),
-    INDEX `idx_expires_at` (`expires_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tabela de sessões ativas';
+    INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Galeria pessoal dos usuários';
 
 -- ============================================================
 -- TABELA: templates
@@ -73,24 +179,6 @@ CREATE TABLE IF NOT EXISTS `templates` (
     INDEX `idx_is_premium` (`is_premium`),
     INDEX `idx_order` (`order_position`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Templates pré-definidos para encarts';
-
--- ============================================================
--- TABELA: user_uploads
--- Registro de arquivos enviados pelos usuários
--- ============================================================
-CREATE TABLE IF NOT EXISTS `user_uploads` (
-    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `user_id` INT UNSIGNED NOT NULL COMMENT 'ID do usuário que fez o upload',
-    `filename` VARCHAR(255) NOT NULL COMMENT 'Nome do arquivo no servidor (hash)',
-    `original_name` VARCHAR(255) NOT NULL COMMENT 'Nome original do arquivo',
-    `file_size` INT UNSIGNED NOT NULL COMMENT 'Tamanho em bytes',
-    `mime_type` VARCHAR(100) NOT NULL COMMENT 'Tipo MIME real do arquivo',
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Data do upload',
-    
-    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-    INDEX `idx_user_id` (`user_id`),
-    INDEX `idx_filename` (`filename`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Registro de uploads de imagens dos usuários';
 
 -- ============================================================
 -- TABELA: encarts
@@ -120,12 +208,28 @@ CREATE TABLE IF NOT EXISTS `encarts` (
 -- INSERÇÃO DE DADOS INICIAIS
 -- ============================================================
 
--- Usuários de teste (senhas: admin123, user123, pro123)
--- Hash gerado com password_hash('senha', PASSWORD_BCRYPT)
-INSERT INTO `users` (`name`, `email`, `password_hash`, `plan`, `is_active`) VALUES
-('Administrador', 'admin@encarts.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'pro', 1),
-('Usuário Free', 'free@encarts.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'free', 1),
-('Usuário Pro', 'pro@encarts.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'pro', 1);
+-- Nota: Os usuários agora são criados automaticamente via Clerk
+-- quando fazem o primeiro login. Não é necessário inserir usuários manuais.
+
+-- Inserção de Roles (Perfis de Acesso)
+INSERT INTO `roles` (`name`, `description`) VALUES 
+('admin', 'Administrador com acesso total ao painel, planos, usuários e galeria pública'),
+('user', 'Usuário padrão com acesso aos encartes e galeria pessoal'),
+('editor', 'Usuário com permissão para criar conteúdo na galeria pública');
+
+-- Inserção de Planos de Assinatura
+INSERT INTO `plans` (`name`, `slug`, `price`, `max_encarts`, `max_uploads`, `features`) VALUES 
+('Gratuito', 'free', 0.00, 3, 5, '{"watermark": true, "support": "community", "templates": "basic"}'),
+('Profissional', 'pro', 29.90, 50, 100, '{"watermark": false, "support": "priority", "templates": "all", "analytics": true}'),
+('Empresarial', 'enterprise', 99.90, 9999, 9999, '{"watermark": false, "support": "dedicated", "templates": "all", "api_access": true, "white_label": true}');
+
+-- Inserção de Categorias da Galeria Pública
+INSERT INTO `gallery_categories` (`name`, `slug`, `description`, `sort_order`) VALUES 
+('Geral', 'geral', 'Imagens gerais disponíveis para todos os usuários', 1),
+('Promoções', 'promocoes', 'Modelos e imagens para promoções e vendas', 2),
+('Redes Sociais', 'redes-sociais', 'Assets otimizados para Instagram, Facebook e outras redes', 3),
+('Eventos', 'eventos', 'Imagens para eventos, lançamentos e datas comemorativas', 4),
+('Institucional', 'institucional', 'Elementos para comunicação institucional das empresas', 5);
 
 -- Templates de exemplo com canvas_data JSON realista
 INSERT INTO `templates` (`name`, `category`, `canvas_data`, `thumbnail_url`, `is_premium`, `order_position`) VALUES

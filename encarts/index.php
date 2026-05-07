@@ -1,28 +1,11 @@
 <?php
 /**
  * /encarts/index.php
- * Landing page / Login / Registro
+ * Landing page com login Clerk
  */
 
-// Iniciar sessão para CSRF
-session_start();
-
-// Carregar classes
-require_once __DIR__ . '/classes/Database.php';
-require_once __DIR__ . '/classes/Auth.php';
-
-$auth = new Auth();
-
-// Se já estiver autenticado, redirecionar para dashboard
-if ($auth->isAuthenticated()) {
-    header('Location: dashboard.php');
-    exit;
-}
-
-// Gerar token CSRF
-if (!isset($_SESSION['csrf_token'])) {
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-}
+// Carregar configuração do Clerk
+require_once __DIR__ . '/config/clerk.php';
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -40,6 +23,9 @@ if (!isset($_SESSION['csrf_token'])) {
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/encarts/assets/css/style.css">
     
+    <!-- Clerk JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"></script>
+    
     <style>
         .feature-icon {
             width: 48px;
@@ -52,6 +38,10 @@ if (!isset($_SESSION['csrf_token'])) {
             color: white;
             font-size: 1.5rem;
             margin-bottom: 1rem;
+        }
+        #clerk-login {
+            max-width: 400px;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -66,7 +56,7 @@ if (!isset($_SESSION['csrf_token'])) {
             <ul class="navbar-nav">
                 <li><a href="#features" class="nav-link">Recursos</a></li>
                 <li><a href="#pricing" class="nav-link">Planos</a></li>
-                <li><button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#loginModal">Entrar</button></li>
+                <li><button class="btn btn-primary" id="loginBtn">Entrar</button></li>
             </ul>
         </div>
     </nav>
@@ -76,9 +66,16 @@ if (!isset($_SESSION['csrf_token'])) {
         <div class="text-center text-white">
             <h1 class="display-4 fw-bold mb-4">Crie Designs Profissionais em Minutos</h1>
             <p class="lead mb-4 opacity-75">Editor visual intuitivo para posts, stories, banners e muito mais.<br>Sem necessidade de experiência com design.</p>
-            <button class="btn btn-light btn-lg px-5" data-bs-toggle="modal" data-bs-target="#registerModal">
+            <button class="btn btn-light btn-lg px-5" id="signupBtn">
                 <i class="bi bi-rocket-takeoff"></i> Começar Gratuitamente
             </button>
+        </div>
+    </section>
+
+    <!-- Login Section (oculta por padrão) -->
+    <section class="py-5" id="loginSection" style="display: none;">
+        <div class="container">
+            <div id="clerk-login"></div>
         </div>
     </section>
 
@@ -132,7 +129,7 @@ if (!isset($_SESSION['csrf_token'])) {
                                 <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Exportação em PNG/JPG</li>
                                 <li class="mb-2"><i class="bi bi-x-circle-fill text-muted me-2"></i>Templates premium</li>
                             </ul>
-                            <button class="btn btn-outline-primary w-100 mt-3" data-bs-toggle="modal" data-bs-target="#registerModal">Começar Grátis</button>
+                            <button class="btn btn-outline-primary w-100 mt-3" id="signupBtn2">Começar Grátis</button>
                         </div>
                     </div>
                 </div>
@@ -150,7 +147,7 @@ if (!isset($_SESSION['csrf_token'])) {
                                 <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Elementos premium</li>
                                 <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Suporte prioritário</li>
                             </ul>
-                            <button class="btn btn-primary w-100 mt-3" data-bs-toggle="modal" data-bs-target="#registerModal">Assinar Pro</button>
+                            <button class="btn btn-primary w-100 mt-3" id="signupBtn3">Assinar Pro</button>
                         </div>
                     </div>
                 </div>
@@ -165,131 +162,58 @@ if (!isset($_SESSION['csrf_token'])) {
         </div>
     </footer>
 
-    <!-- Login Modal -->
-    <div class="modal fade" id="loginModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title">Entrar</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="loginForm">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
-                        <div class="mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="email" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Senha</label>
-                            <input type="password" class="form-control" name="password" required>
-                        </div>
-                        <div id="loginError" class="alert alert-danger d-none"></div>
-                        <button type="submit" class="btn btn-primary w-100">Entrar</button>
-                    </form>
-                    <div class="text-center mt-3">
-                        <small>Não tem conta? <a href="#" data-bs-toggle="modal" data-bs-target="#registerModal" data-bs-dismiss="modal">Cadastre-se</a></small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Register Modal -->
-    <div class="modal fade" id="registerModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title">Criar Conta</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="registerForm">
-                        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
-                        <div class="mb-3">
-                            <label class="form-label">Nome</label>
-                            <input type="text" class="form-control" name="name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="email" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Senha</label>
-                            <input type="password" class="form-control" name="password" minlength="6" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Plano</label>
-                            <select class="form-select" name="plan">
-                                <option value="free">Free - Gratuito</option>
-                                <option value="pro">Pro - R$29/mês</option>
-                            </select>
-                        </div>
-                        <div id="registerError" class="alert alert-danger d-none"></div>
-                        <button type="submit" class="btn btn-primary w-100">Criar Conta</button>
-                    </form>
-                    <div class="text-center mt-3">
-                        <small>Já tem conta? <a href="#" data-bs-toggle="modal" data-bs-target="#loginModal" data-bs-dismiss="modal">Entrar</a></small>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/encarts/assets/js/app.js"></script>
     <script>
-        // Login Form
-        document.getElementById('loginForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-            const email = formData.get('email');
-            const password = formData.get('password');
-            
-            try {
-                const result = await login(email, password);
-                if (result.success) {
-                    window.location.href = '/encarts/dashboard.php';
-                } else {
-                    const errorDiv = document.getElementById('loginError');
-                    errorDiv.textContent = result.message;
-                    errorDiv.classList.remove('d-none');
-                }
-            } catch (error) {
-                console.error('Login error:', error);
+        // Inicializar Clerk
+        const clerkPublishableKey = '<?php echo CLERK_PUBLISHABLE_KEY; ?>';
+        let clerk = null;
+        
+        async function initClerk() {
+            if (!clerkPublishableKey) {
+                console.error('CLERK_PUBLISHABLE_KEY não configurado');
+                return;
             }
-        });
-
-        // Register Form
-        document.getElementById('registerForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
             
             try {
-                const result = await register(
-                    formData.get('name'),
-                    formData.get('email'),
-                    formData.get('password'),
-                    formData.get('plan')
-                );
+                await clerk.load({
+                    signInUrl: window.location.origin + '/encarts/',
+                    signUpUrl: window.location.origin + '/encarts/'
+                });
                 
-                if (result.success) {
-                    showToast('Conta criada com sucesso! Faça login.', 'success');
-                    setTimeout(() => {
-                        const modal = bootstrap.Modal.getInstance(document.getElementById('registerModal'));
-                        modal.hide();
-                        const loginModal = new bootstrap.Modal(document.getElementById('loginModal'));
-                        loginModal.show();
-                    }, 1500);
-                } else {
-                    const errorDiv = document.getElementById('registerError');
-                    errorDiv.textContent = result.message;
-                    errorDiv.classList.remove('d-none');
+                // Verificar se já está logado
+                if (clerk.user) {
+                    window.location.href = '/encarts/dashboard.php';
+                    return;
                 }
+                
+                // Montar componente de sign-in
+                clerk.mountSignIn(document.getElementById('clerk-login'), {
+                    afterSignInUrl: '/encarts/dashboard.php',
+                    afterSignUpUrl: '/encarts/dashboard.php'
+                });
             } catch (error) {
-                console.error('Register error:', error);
+                console.error('Erro ao inicializar Clerk:', error);
             }
+        }
+        
+        // Mostrar formulário de login
+        function showLoginForm() {
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('loginSection').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Inicializar Clerk
+            initClerk();
+            
+            // Botões de login/signup
+            document.getElementById('loginBtn')?.addEventListener('click', showLoginForm);
+            document.getElementById('signupBtn')?.addEventListener('click', showLoginForm);
+            document.getElementById('signupBtn2')?.addEventListener('click', showLoginForm);
+            document.getElementById('signupBtn3')?.addEventListener('click', showLoginForm);
         });
     </script>
 </body>

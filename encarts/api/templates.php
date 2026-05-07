@@ -8,7 +8,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 // Pre-flight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -18,15 +18,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Carregar classes necessárias
 require_once dirname(__DIR__) . '/classes/Database.php';
-require_once dirname(__DIR__) . '/classes/Auth.php';
+require_once dirname(__DIR__) . '/classes/ClerkAuth.php';
 require_once dirname(__DIR__) . '/classes/Template.php';
 
-$auth = new Auth();
 $templateModel = new Template();
 
 // Verificar autenticação (opcional - templates públicos podem ser acessados sem login)
-$user = $auth->getCurrentUser();
-$isPro = $user && isset($user['plan']) && $user['plan'] === 'pro';
+$isPro = false;
+try {
+    $user = ClerkAuth::requireAuth();
+    $isPro = isset($user['plan']) && $user['plan'] === 'pro';
+} catch (Exception $e) {
+    // Usuário não autenticado - permitir acesso apenas a templates gratuitos
+}
 
 // Apenas método GET permitido
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {

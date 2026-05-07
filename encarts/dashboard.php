@@ -2,26 +2,16 @@
 /**
  * /encarts/dashboard.php
  * Painel do usuário - Lista de encarts criados
+ * Autenticação via Clerk
  */
 
-// Iniciar sessão
-session_start();
-
-// Carregar classes
-require_once __DIR__ . '/classes/Database.php';
-require_once __DIR__ . '/classes/Auth.php';
+require_once __DIR__ . '/config/clerk.php';
+require_once __DIR__ . '/classes/ClerkAuth.php';
 require_once __DIR__ . '/classes/User.php';
 
-$auth = new Auth();
+// Verificar autenticação via Clerk
+$user = ClerkAuth::requireAuth();
 $userModel = new User();
-
-// Verificar autenticação
-if (!$auth->isAuthenticated()) {
-    header('Location: index.php');
-    exit;
-}
-
-$user = $auth->getCurrentUser();
 $limits = $userModel->getPlanLimits((int)$user['id']);
 ?>
 <!DOCTYPE html>
@@ -39,6 +29,9 @@ $limits = $userModel->getPlanLimits((int)$user['id']);
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/encarts/assets/css/style.css">
+    
+    <!-- Clerk JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"></script>
 </head>
 <body>
     <!-- Navbar -->
@@ -49,8 +42,8 @@ $limits = $userModel->getPlanLimits((int)$user['id']);
                 Encarts
             </a>
             <ul class="navbar-nav">
-                <li><span class="nav-link">Olá, <?php echo htmlspecialchars($user['name']); ?></span></li>
-                <li><span class="badge bg-<?php echo $user['plan'] === 'pro' ? 'warning' : 'secondary'; ?>"><?php echo ucfirst($user['plan']); ?></span></li>
+                <li><span class="nav-link" id="userNameDisplay">Olá, <?php echo htmlspecialchars($user['name']); ?></span></li>
+                <li><span class="badge bg-<?php echo $user['plan'] === 'pro' ? 'warning' : 'secondary'; ?>" id="userPlanBadge"><?php echo ucfirst($user['plan']); ?></span></li>
                 <li><a href="editor.php" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Novo Encart</a></li>
                 <li><button class="btn btn-secondary" id="logoutBtn"><i class="bi bi-box-arrow-right"></i> Sair</button></li>
             </ul>
@@ -163,10 +156,43 @@ $limits = $userModel->getPlanLimits((int)$user['id']);
     <script src="/encarts/assets/js/app.js"></script>
     <script>
         let currentEncarts = [];
+        
+        // Inicializar Clerk e verificar auth
+        const clerkPublishableKey = '<?php echo CLERK_PUBLISHABLE_KEY; ?>';
+        
+        async function initClerkAndCheck() {
+            if (!clerkPublishableKey) {
+                console.error('CLERK_PUBLISHABLE_KEY não configurado');
+                return;
+            }
+            
+            try {
+                await clerk.load();
+                
+                // Se não estiver logado, redirecionar para index
+                if (!clerk.user) {
+                    window.location.href = '/encarts/index.php';
+                    return;
+                }
+                
+                // Atualizar informações do usuário na UI
+                updateUserInfo(clerk.user);
+            } catch (error) {
+                console.error('Erro ao inicializar Clerk:', error);
+            }
+        }
+        
+        function updateUserInfo(user) {
+            const nameDisplay = document.getElementById('userNameDisplay');
+            if (user.firstName || user.primaryEmailAddress) {
+                const firstName = user.firstName || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Usuário';
+                nameDisplay.textContent = 'Olá, ' + firstName;
+            }
+        }
 
         // Logout
         document.getElementById('logoutBtn').addEventListener('click', async function() {
-            await logout();
+            await clerk.signOut();
             window.location.href = '/encarts/index.php';
         });
 
@@ -292,7 +318,8 @@ $limits = $userModel->getPlanLimits((int)$user['id']);
             return div.innerHTML;
         }
 
-        // Carregar ao iniciar
+        // Inicializar
+        initClerkAndCheck();
         loadEncarts();
     </script>
 </body>
