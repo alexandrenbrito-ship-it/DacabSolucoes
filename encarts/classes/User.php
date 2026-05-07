@@ -1,7 +1,7 @@
 <?php
 /**
  * /classes/User.php
- * Classe para CRUD de usuários
+ * Classe para CRUD de usuários com integração Clerk e sistema de planos/roles
  * Operações de criação, leitura, atualização e exclusão de usuários
  */
 
@@ -17,73 +17,56 @@ class User {
     }
     
     /**
-     * Cria um novo usuário
+     * Cria um novo usuário via Clerk (sincronização automática)
      * 
+     * @param string $clerkUserId ID do usuário no Clerk
+     * @param string $email Email do usuário
      * @param string $name Nome do usuário
-     * @param string $email Email único
-     * @param string $password Senha em texto puro
-     * @param string $plan Plano (free/pro)
+     * @param string|null $avatarUrl URL do avatar
      * @return array ['success' => bool, 'message' => string, 'user_id' => ?int]
      */
-    public function create(string $name, string $email, string $password, string $plan = 'free'): array {
+    public function createFromClerk(string $clerkUserId, string $email, string $name, ?string $avatarUrl = null): array {
         try {
-            // Validar email
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                return [
-                    'success' => false,
-                    'message' => 'Email inválido.',
-                    'user_id' => null
-                ];
-            }
-            
-            // Verificar se email já existe
-            $stmt = $this->db->prepare("SELECT id FROM users WHERE email = :email");
-            $stmt->execute(['email' => $email]);
+            // Verificar se usuário já existe pelo clerk_user_id
+            $stmt = $this->db->prepare("SELECT id FROM users WHERE clerk_user_id = :clerk_user_id");
+            $stmt->execute(['clerk_user_id' => $clerkUserId]);
             
             if ($stmt->fetch()) {
                 return [
-                    'success' => false,
-                    'message' => 'Este email já está cadastrado.',
-                    'user_id' => null
+                    'success' => true,
+                    'message' => 'Usuário já existe.',
+                    'user_id' => (int)$stmt->fetchColumn(),
+                    'created' => false
                 ];
             }
             
-            // Validar senha (mínimo 6 caracteres)
-            if (strlen($password) < 6) {
-                return [
-                    'success' => false,
-                    'message' => 'A senha deve ter pelo menos 6 caracteres.',
-                    'user_id' => null
-                ];
-            }
-            
-            // Hash da senha com bcrypt
-            $passwordHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 10]);
-            
-            // Inserir usuário
+            // Inserir usuário com plano free e role user por padrão
             $stmt = $this->db->prepare("
-                INSERT INTO users (name, email, password_hash, plan)
-                VALUES (:name, :email, :password_hash, :plan)
+                INSERT INTO users (clerk_user_id, clerk_email, name, email, role_id, plan_id, avatar_url)
+                VALUES (:clerk_user_id, :clerk_email, :name, :email, 2, 1, :avatar_url)
             ");
             $stmt->execute([
+                'clerk_user_id' => $clerkUserId,
+                'clerk_email' => strtolower(trim($email)),
                 'name' => htmlspecialchars(trim($name)),
                 'email' => strtolower(trim($email)),
-                'password_hash' => $passwordHash,
-                'plan' => in_array($plan, ['free', 'pro']) ? $plan : 'free'
+                'avatar_url' => $avatarUrl
             ]);
             
             return [
                 'success' => true,
                 'message' => 'Usuário criado com sucesso!',
-                'user_id' => (int)$this->db->lastInsertId()
+                'user_id' => (int)$this->db->lastInsertId(),
+                'created' => true
             ];
             
         } catch (PDOException $e) {
-            error_log("User create error: " . $e->getMessage());
+            error_log("User createFromClerk error: " . $e->getMessage());
             return [
                 'success' => false,
                 'message' => 'Erro interno do servidor. Tente novamente mais tarde.',
-                'user_id' => null
+                'user_id' => null,
+                'created' => false
             ];
         }
     }
@@ -97,14 +80,41 @@ class User {
     public function getById(int $id): ?array {
         try {
             $stmt = $this->db->prepare("
-                SELECT id, name, email, plan, avatar_url, created_at, last_login, is_active
-                FROM users
-                WHERE id = :id
+                SELECT u.*, r.name as role_name, p.name as plan_name, p.slug as plan_slug,
+                       p.max_encarts, p.max_uploads
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                LEFT JOIN plans p ON u.plan_id = p.id
+                WHERE u.id = :id
             ");
             $stmt->execute(['id' => $id]);
             return $stmt->fetch() ?: null;
         } catch (PDOException $e) {
             error_log("User getById error: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Obtém um usuário pelo Clerk ID
+     * 
+     * @param string $clerkUserId ID do usuário no Clerk
+     * @return array|null Dados do usuário ou null se não encontrado
+     */
+    public function getByClerkId(string $clerkUserId): ?array {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT u.*, r.name as role_name, p.name as plan_name, p.slug as plan_slug,
+                       p.max_encarts, p.max_uploads
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                LEFT JOIN plans p ON u.plan_id = p.id
+                WHERE u.clerk_user_id = :clerk_user_id
+            ");
+            $stmt->execute(['clerk_user_id' => $clerkUserId]);
+            return $stmt->fetch() ?: null;
+        } catch (PDOException $e) {
+            error_log("User getByClerkId error: " . $e->getMessage());
             return null;
         }
     }
@@ -118,9 +128,11 @@ class User {
     public function getByEmail(string $email): ?array {
         try {
             $stmt = $this->db->prepare("
-                SELECT id, name, email, plan, avatar_url, created_at, last_login, is_active
-                FROM users
-                WHERE email = :email
+                SELECT u.*, r.name as role_name, p.name as plan_name
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                LEFT JOIN plans p ON u.plan_id = p.id
+                WHERE u.email = :email
             ");
             $stmt->execute(['email' => $email]);
             return $stmt->fetch() ?: null;
@@ -131,7 +143,7 @@ class User {
     }
     
     /**
-     * Atualiza dados do usuário
+     * Atualiza dados do usuário (apenas admin ou o próprio usuário)
      * 
      * @param int $id ID do usuário
      * @param array $data Dados a serem atualizados
@@ -139,14 +151,18 @@ class User {
      */
     public function update(int $id, array $data): array {
         try {
-            $allowedFields = ['name', 'avatar_url', 'plan'];
+            $allowedFields = ['name', 'avatar_url', 'role_id', 'plan_id', 'subscription_status', 'subscription_expires_at'];
             $updates = [];
             $params = ['id' => $id];
             
             foreach ($allowedFields as $field) {
                 if (isset($data[$field])) {
                     $updates[] = "$field = :$field";
-                    $params[$field] = $field === 'name' ? htmlspecialchars(trim($data[$field])) : $data[$field];
+                    if ($field === 'name') {
+                        $params[$field] = htmlspecialchars(trim($data[$field]));
+                    } else {
+                        $params[$field] = $data[$field];
+                    }
                 }
             }
             
@@ -176,58 +192,38 @@ class User {
     }
     
     /**
-     * Atualiza a senha do usuário
+     * Atualiza o plano do usuário (apenas admin)
      * 
-     * @param int $id ID do usuário
-     * @param string $currentPassword Senha atual
-     * @param string $newPassword Nova senha
+     * @param int $userId ID do usuário
+     * @param int $planId ID do novo plano
      * @return array ['success' => bool, 'message' => string]
      */
-    public function updatePassword(int $id, string $currentPassword, string $newPassword): array {
+    public function updatePlan(int $userId, int $planId): array {
         try {
-            // Buscar hash da senha atual
-            $stmt = $this->db->prepare("SELECT password_hash FROM users WHERE id = :id");
-            $stmt->execute(['id' => $id]);
-            $user = $stmt->fetch();
+            // Verificar se plano existe
+            $stmt = $this->db->prepare("SELECT id FROM plans WHERE id = :id AND is_active = 1");
+            $stmt->execute(['id' => $planId]);
             
-            if (!$user) {
+            if (!$stmt->fetch()) {
                 return [
                     'success' => false,
-                    'message' => 'Usuário não encontrado.'
+                    'message' => 'Plano inválido ou inativo.'
                 ];
             }
             
-            // Verificar senha atual
-            if (!password_verify($currentPassword, $user['password_hash'])) {
-                return [
-                    'success' => false,
-                    'message' => 'Senha atual incorreta.'
-                ];
-            }
-            
-            // Validar nova senha
-            if (strlen($newPassword) < 6) {
-                return [
-                    'success' => false,
-                    'message' => 'A nova senha deve ter pelo menos 6 caracteres.'
-                ];
-            }
-            
-            // Atualizar senha
-            $passwordHash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 10]);
-            $stmt = $this->db->prepare("UPDATE users SET password_hash = :password_hash WHERE id = :id");
+            $stmt = $this->db->prepare("UPDATE users SET plan_id = :plan_id, subscription_status = 'active' WHERE id = :id");
             $stmt->execute([
-                'password_hash' => $passwordHash,
-                'id' => $id
+                'plan_id' => $planId,
+                'id' => $userId
             ]);
             
             return [
                 'success' => true,
-                'message' => 'Senha alterada com sucesso!'
+                'message' => 'Plano atualizado com sucesso!'
             ];
             
         } catch (PDOException $e) {
-            error_log("User updatePassword error: " . $e->getMessage());
+            error_log("User updatePlan error: " . $e->getMessage());
             return [
                 'success' => false,
                 'message' => 'Erro interno do servidor. Tente novamente mais tarde.'
@@ -236,26 +232,111 @@ class User {
     }
     
     /**
-     * Deleta um usuário (soft delete - desativa)
+     * Atualiza o role do usuário (apenas admin)
+     * 
+     * @param int $userId ID do usuário
+     * @param int $roleId ID do novo role
+     * @return array ['success' => bool, 'message' => string]
+     */
+    public function updateRole(int $userId, int $roleId): array {
+        try {
+            // Verificar se role existe
+            $stmt = $this->db->prepare("SELECT id FROM roles WHERE id = :id");
+            $stmt->execute(['id' => $roleId]);
+            
+            if (!$stmt->fetch()) {
+                return [
+                    'success' => false,
+                    'message' => 'Perfil inválido.'
+                ];
+            }
+            
+            $stmt = $this->db->prepare("UPDATE users SET role_id = :role_id WHERE id = :id");
+            $stmt->execute([
+                'role_id' => $roleId,
+                'id' => $userId
+            ]);
+            
+            return [
+                'success' => true,
+                'message' => 'Perfil atualizado com sucesso!'
+            ];
+            
+        } catch (PDOException $e) {
+            error_log("User updateRole error: " . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Erro interno do servidor. Tente novamente mais tarde.'
+            ];
+        }
+    }
+    
+    /**
+     * Desativa um usuário (apenas admin)
      * 
      * @param int $id ID do usuário
      * @return array ['success' => bool, 'message' => string]
      */
-    public function delete(int $id): array {
+    public function deactivate(int $id): array {
         try {
             $stmt = $this->db->prepare("UPDATE users SET is_active = 0 WHERE id = :id");
             $stmt->execute(['id' => $id]);
             
             return [
                 'success' => true,
-                'message' => 'Conta desativada com sucesso.'
+                'message' => 'Usuário desativado com sucesso.'
             ];
             
         } catch (PDOException $e) {
-            error_log("User delete error: " . $e->getMessage());
+            error_log("User deactivate error: " . $e->getMessage());
             return [
                 'success' => false,
                 'message' => 'Erro interno do servidor. Tente novamente mais tarde.'
+            ];
+        }
+    }
+    
+    /**
+     * Lista todos os usuários com paginação
+     * 
+     * @param int $page Página atual
+     * @param int $limit Registros por página
+     * @return array ['users' => array, 'total' => int, 'pages' => int]
+     */
+    public function getAll(int $page = 1, int $limit = 20): array {
+        try {
+            $offset = ($page - 1) * $limit;
+            
+            // Total de usuários
+            $stmt = $this->db->query("SELECT COUNT(*) as total FROM users");
+            $total = (int) $stmt->fetch()['total'];
+            $pages = ceil($total / $limit);
+            
+            // Lista de usuários
+            $stmt = $this->db->prepare("
+                SELECT u.*, r.name as role_name, p.name as plan_name, p.slug as plan_slug
+                FROM users u
+                LEFT JOIN roles r ON u.role_id = r.id
+                LEFT JOIN plans p ON u.plan_id = p.id
+                ORDER BY u.created_at DESC
+                LIMIT :limit OFFSET :offset
+            ");
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            $stmt->execute();
+            
+            return [
+                'users' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+                'total' => $total,
+                'pages' => $pages
+            ];
+            
+        } catch (PDOException $e) {
+            error_log("User getAll error: " . $e->getMessage());
+            return [
+                'users' => [],
+                'total' => 0,
+                'pages' => 0
             ];
         }
     }
@@ -279,10 +360,28 @@ class User {
     }
     
     /**
-     * Verifica o limite de encarts baseado no plano do usuário
+     * Conta o número de uploads na galeria pessoal do usuário
      * 
      * @param int $userId ID do usuário
-     * @return array ['plan' => string, 'limit' => int, 'used' => int, 'remaining' => int]
+     * @return int Número de uploads
+     */
+    public function countUploads(int $userId): int {
+        try {
+            $stmt = $this->db->prepare("SELECT COUNT(*) as total FROM user_galleries WHERE user_id = :user_id AND is_active = 1");
+            $stmt->execute(['user_id' => $userId]);
+            $result = $stmt->fetch();
+            return (int)($result['total'] ?? 0);
+        } catch (PDOException $e) {
+            error_log("User countUploads error: " . $e->getMessage());
+            return 0;
+        }
+    }
+    
+    /**
+     * Verifica os limites do plano do usuário
+     * 
+     * @param int $userId ID do usuário
+     * @return array ['plan' => string, 'max_encarts' => int, 'max_uploads' => int, 'used_encarts' => int, 'used_uploads' => int, 'remaining_encarts' => int, 'remaining_uploads' => int]
      */
     public function getPlanLimits(int $userId): array {
         $user = $this->getById($userId);
@@ -290,26 +389,50 @@ class User {
         if (!$user) {
             return [
                 'plan' => 'free',
-                'limit' => 5,
-                'used' => 0,
-                'remaining' => 5
+                'max_encarts' => 3,
+                'max_uploads' => 5,
+                'used_encarts' => 0,
+                'used_uploads' => 0,
+                'remaining_encarts' => 3,
+                'remaining_uploads' => 5
             ];
         }
         
-        $limits = [
-            'free' => 5,
-            'pro' => PHP_INT_MAX
-        ];
-        
-        $limit = $limits[$user['plan']] ?? 5;
-        $used = $this->countEncarts($userId);
-        $remaining = max(0, $limit - $used);
+        $usedEncarts = $this->countEncarts($userId);
+        $usedUploads = $this->countUploads($userId);
         
         return [
-            'plan' => $user['plan'],
-            'limit' => $limit,
-            'used' => $used,
-            'remaining' => $remaining
+            'plan' => $user['plan_slug'] ?? 'free',
+            'plan_name' => $user['plan_name'] ?? 'Gratuito',
+            'max_encarts' => (int)($user['max_encarts'] ?? 3),
+            'max_uploads' => (int)($user['max_uploads'] ?? 5),
+            'used_encarts' => $usedEncarts,
+            'used_uploads' => $usedUploads,
+            'remaining_encarts' => max(0, (int)($user['max_encarts'] ?? 3) - $usedEncarts),
+            'remaining_uploads' => max(0, (int)($user['max_uploads'] ?? 5) - $usedUploads)
         ];
+    }
+    
+    /**
+     * Verifica se o usuário é administrador
+     * 
+     * @param int $userId ID do usuário
+     * @return bool
+     */
+    public function isAdmin(int $userId): bool {
+        $user = $this->getById($userId);
+        return $user && strtolower($user['role_name'] ?? '') === 'admin';
+    }
+    
+    /**
+     * Verifica se o usuário tem role específico
+     * 
+     * @param int $userId ID do usuário
+     * @param string $roleName Nome do role (admin, user, editor)
+     * @return bool
+     */
+    public function hasRole(int $userId, string $roleName): bool {
+        $user = $this->getById($userId);
+        return $user && strtolower($user['role_name'] ?? '') === strtolower($roleName);
     }
 }

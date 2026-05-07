@@ -1,54 +1,56 @@
-*.log
+```
+# Environment files
 .env
 .env.local
-.pyc
-__pycache__/
+.env.*
+
+# Logs
+*.log
+
+# Temporary files
 *.tmp
+
+# Editor/IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# Dependencies
 node_modules/
-venv/
-.venv/
+vendor/
+
+# Build artifacts
 dist/
 build/
 target/
-.gradle/
-.mypy_cache/
-.pytest_cache/
-coverage/
-htmlcov/
-*.swp
-*.swo
-*.out
+*.o
+*.obj
 *.exe
 *.dll
 *.so
 *.a
-*.class
-*.jar
-*.war
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
+*.out
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+.coverage
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.tox/
+
+# PHP specific
+*.phar
+composer.lock
+
+# OS generated files
 .DS_Store
 Thumbs.db
-*.env.*
+```
