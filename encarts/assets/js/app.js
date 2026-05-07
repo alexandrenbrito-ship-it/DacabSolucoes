@@ -1,6 +1,7 @@
 /**
  * /assets/js/app.js
  * Funções utilitárias e chamadas AJAX às APIs
+ * Autenticação via Clerk - JWT no header Authorization
  */
 
 // ============================================================
@@ -9,26 +10,66 @@
 const API_BASE = '/encarts/api/';
 
 // ============================================================
+// CLERK AUTH HELPERS
+// ============================================================
+
+/**
+ * Obtém o token JWT do Clerk para usar nas requisições à API
+ * @returns {Promise<Object>} Headers com Authorization
+ */
+async function getAuthHeader() {
+    if (typeof clerk !== 'undefined' && clerk.session) {
+        const token = await clerk.session.getToken();
+        return { 
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+    }
+    
+    // Fallback para quando Clerk não está disponível
+    return {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    };
+}
+
+// ============================================================
 // FUNÇÕES DE API
 // ============================================================
 
 /**
- * Faz uma requisição fetch com tratamento de erros
+ * Faz uma requisição fetch com tratamento de erros e autenticação Clerk
  */
 async function apiRequest(endpoint, options = {}) {
     const url = API_BASE + endpoint;
     
+    // Obter headers de autenticação
+    const authHeaders = await getAuthHeader();
+    
     const defaultOptions = {
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
+        headers: authHeaders
     };
     
     const config = { ...defaultOptions, ...options };
     
+    // Se já tem headers, mesclar mantendo Authorization
+    if (options.headers) {
+        config.headers = { ...authHeaders, ...options.headers };
+    }
+    
     try {
         const response = await fetch(url, config);
+        
+        // Verificar se é 401 (não autorizado)
+        if (response.status === 401) {
+            if (typeof clerk !== 'undefined') {
+                await clerk.signOut();
+                window.location.href = '/encarts/index.php';
+            }
+            throw new Error('Sessão expirada. Faça login novamente.');
+        }
+        
         const data = await response.json();
         
         if (!response.ok) {
@@ -43,35 +84,25 @@ async function apiRequest(endpoint, options = {}) {
 }
 
 // ============================================================
-// AUTENTICAÇÃO
+// AUTENTICAÇÃO (Clerk - apenas helpers de UI)
 // ============================================================
 
-async function login(email, password) {
-    return await apiRequest('auth.php', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'login', email, password })
-    });
-}
-
-async function logout() {
-    return await apiRequest('auth.php', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'logout' })
-    });
-}
-
-async function register(name, email, password, plan = 'free') {
-    return await apiRequest('auth.php', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'register', name, email, password, plan })
-    });
-}
-
+/**
+ * Verifica se usuário está autenticado via Clerk
+ */
 async function checkAuth() {
-    return await apiRequest('auth.php', {
-        method: 'POST',
-        body: JSON.stringify({ action: 'check' })
-    });
+    if (typeof clerk !== 'undefined' && clerk.user) {
+        return {
+            authenticated: true,
+            user: {
+                id: clerk.user.id,
+                name: clerk.user.firstName || clerk.user.primaryEmailAddress?.emailAddress || 'Usuário',
+                email: clerk.user.primaryEmailAddress?.emailAddress,
+                avatar_url: clerk.user.imageUrl
+            }
+        };
+    }
+    return { authenticated: false };
 }
 
 // ============================================================
@@ -163,15 +194,27 @@ async function uploadImage(file) {
     const formData = new FormData();
     formData.append('image', file);
     
+    // Obter token de autenticação
+    const authHeaders = await getAuthHeader();
+    
     try {
         const response = await fetch(API_BASE + 'upload.php', {
             method: 'POST',
+            headers: {
+                'Authorization': authHeaders['Authorization']
+            },
             body: formData
         });
         
         const data = await response.json();
         
         if (!response.ok) {
+            if (response.status === 401) {
+                if (typeof clerk !== 'undefined') {
+                    await clerk.signOut();
+                    window.location.href = '/encarts/index.php';
+                }
+            }
             throw new Error(data.message || 'Erro no upload');
         }
         
