@@ -12,8 +12,9 @@
 -- antes de executar este script. Use: u624766619_encartes
 -- ============================================================
 
--- Nota: Não é necessário criar o banco aqui, pois ele já existe
--- O install.php seleciona o banco automaticamente baseado na configuração
+-- Seleciona o banco de dados (necessário para importação manual)
+-- Substitua 'u624766619_encartes' pelo nome do seu banco se for diferente
+USE `u624766619_encartes`;
 
 -- ============================================================
 -- TABELA: users
