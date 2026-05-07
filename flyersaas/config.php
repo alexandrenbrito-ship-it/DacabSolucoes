@@ -9,10 +9,16 @@ define('BASE_PATH', dirname(__DIR__));
 define('ROOT_PATH', __DIR__);
 
 // Carregar variáveis de ambiente
+$envLoaded = false;
 if (file_exists(ROOT_PATH . '/.env')) {
     $env = parse_ini_file(ROOT_PATH . '/.env');
-    foreach ($env as $key => $value) {
-        define($key, $value);
+    if ($env !== false) {
+        foreach ($env as $key => $value) {
+            if (!defined($key)) {
+                define($key, $value);
+            }
+        }
+        $envLoaded = true;
     }
 }
 
@@ -63,17 +69,89 @@ function redirect($url) {
     exit;
 }
 
-// Verificar se está instalado
+/**
+ * Verifica se todas as tabelas necessárias existem no banco de dados
+ * @return bool
+ */
+function checkDatabaseTables() {
+    $requiredTables = [
+        'users',
+        'plans',
+        'user_subscriptions',
+        'gallery_images',
+        'flyers',
+        'flyer_items',
+        'system_config',
+        'migrations'
+    ];
+    
+    try {
+        // Tenta criar conexão
+        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+        $pdo = new PDO($dsn, DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        
+        $stmt = $pdo->query("SHOW TABLES");
+        $existingTables = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        foreach ($requiredTables as $table) {
+            if (!in_array($table, $existingTables)) {
+                return false;
+            }
+        }
+        return true;
+    } catch (Exception $e) {
+        // Erro de conexão ou outra falha
+        return false;
+    }
+}
+
+// Verificar se está instalado (arquivo .env existe e INSTALLED=true)
 function isInstalled() {
-    return defined('INSTALLED') && INSTALLED === true;
+    if (!file_exists(ROOT_PATH . '/.env')) {
+        return false;
+    }
+    
+    $env = parse_ini_file(ROOT_PATH . '/.env');
+    if ($env === false) {
+        return false;
+    }
+    
+    return isset($env['INSTALLED']) && $env['INSTALLED'] === 'true';
+}
+
+/**
+ * Verificação completa de instalação
+ * Retorna true se o sistema estiver instalado e pronto para uso
+ */
+function isSystemReady() {
+    // Verifica se o arquivo .env existe e está configurado
+    if (!isInstalled()) {
+        return false;
+    }
+    
+    // Verifica se as tabelas existem
+    if (!checkDatabaseTables()) {
+        return false;
+    }
+    
+    return true;
 }
 
 // Redirecionar para instalação se necessário
 function checkInstallation() {
-    if (!isInstalled() && basename($_SERVER['PHP_SELF']) !== 'install.php') {
+    // Não verifica se já estiver na página de instalação
+    $currentPage = basename($_SERVER['PHP_SELF']);
+    if ($currentPage === 'install.php') {
+        return;
+    }
+    
+    if (!isSystemReady()) {
         redirect(BASE_URL . '/install.php');
     }
 }
+
+// Executa verificação automática em todas as páginas
+checkInstallation();
 
 // Carregar classes automaticamente
 spl_autoload_register(function ($class) {
@@ -82,3 +160,8 @@ spl_autoload_register(function ($class) {
         require_once $file;
     }
 });
+
+// Carregar funções auxiliares
+if (file_exists(ROOT_PATH . '/includes/functions.php')) {
+    require_once ROOT_PATH . '/includes/functions.php';
+}
