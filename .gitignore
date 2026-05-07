@@ -1,34 +1,3 @@
-```
-# Environment and config files
-.env
-.env.local
-.env.*
+Nothing should be ignored in this case, as the changes only include PHP source files (.php) which are legitimate code files that should be tracked in version control. No build artifacts, dependencies, or temporary files are present in the change list.
 
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# PHP specific
-*.php~
-phpunit.xml.dist
-composer.lock
-
-# Uploads directory (if it contains temporary files)
-flyersaas/assets/uploads/*
-!flyersaas/assets/uploads/.htaccess
-
-# Database migration backups
-flyersaas/database/migrations/*.sql.bak
-flyersaas/database/migrations/*_backup.sql
-
-# Installation files
-flyersaas/install.php
-```
+Therefore, the .gitignore should remain empty.
