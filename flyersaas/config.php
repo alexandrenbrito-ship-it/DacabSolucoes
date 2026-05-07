@@ -145,8 +145,14 @@ function checkInstallation() {
         return;
     }
     
+    // Se não estiver instalado ou faltar tabelas, redireciona para install.php
     if (!isSystemReady()) {
-        redirect(BASE_URL . '/install.php');
+        // Usa caminho relativo se BASE_URL não estiver definido corretamente
+        if (defined('BASE_URL') && BASE_URL) {
+            redirect(BASE_URL . '/install.php');
+        } else {
+            redirect('install.php');
+        }
     }
 }
 

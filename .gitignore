@@ -1,3 +1,35 @@
-Nothing should be ignored in this case, as the changes only include PHP source files (.php) which are legitimate code files that should be tracked in version control. No build artifacts, dependencies, or temporary files are present in the change list.
+```
+# Environment files
+.env
+.env.local
+*.env.*
 
-Therefore, the .gitignore should remain empty.
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+
+# Editor/IDE files
+.vscode/
+.idea/
+
+# Dependencies
+vendor/
+node_modules/
+*.lock
+
+# Build artifacts
+dist/
+build/
+*.min.js
+*.min.css
+*.map
+
+# Cache directories
+.cache/
+*.cache
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```
