@@ -1,4 +1,5 @@
 ```
-# Web server
-.htaccess
+# Compressed archives
+*.tar.gz
+*.zip
 ```

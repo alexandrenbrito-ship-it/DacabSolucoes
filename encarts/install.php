@@ -51,8 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
                 ]);
                 
-                // Verificar se banco existe, se não, tentar criar
-                $testPdo->exec("CREATE DATABASE IF NOT EXISTS `" . str_replace('`', '', $dbName) . "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+                // Apenas seleciona o banco de dados (já deve existir criado no painel)
+                // Não tenta criar o banco, apenas verifica se consegue acessá-lo
                 $testPdo->exec("USE `" . str_replace('`', '', $dbName) . "`");
                 
                 // Criar arquivo .env
@@ -85,6 +85,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $errors[] = "Usuário ou senha incorretos";
                 } elseif ($errorCode == 2002) {
                     $errors[] = "Não foi possível conectar ao servidor MySQL. Verifique o host.";
+                } elseif ($errorCode == 1044) {
+                    $errors[] = "Acesso negado ao banco de dados '{$dbName}'. Verifique se o banco foi criado no painel e se o usuário tem permissões.";
+                } elseif ($errorCode == 1049) {
+                    $errors[] = "Banco de dados '{$dbName}' não existe. Crie-o primeiro no painel da Hostinger antes de continuar.";
                 } else {
                     $errors[] = "Erro na conexão: " . $e->getMessage();
                 }
@@ -98,16 +102,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Carregar configurações salvas
             require_once __DIR__ . '/config/database.php';
             
+            // Verificar se conseguimos conectar e selecionar o banco
+            $pdo->exec("USE `" . str_replace('`', '', $dbName) . "`");
+            
             // Ler script SQL
             $sqlFile = __DIR__ . '/sql/schema.sql';
             if (!file_exists($sqlFile)) {
                 throw new Exception("Arquivo schema.sql não encontrado");
             }
             
-            $sql = file_get_contents($sqlFile);
+            $sqlContent = file_get_contents($sqlFile);
             
-            // Executar múltiplas queries
-            $pdo->exec($sql);
+            // Remover comentários SQL
+            $sqlContent = preg_replace('/--.*$/m', '', $sqlContent);
+            $sqlContent = preg_replace('/\/\*[\s\S]*?\*\//', '', $sqlContent);
+            
+            // Dividir em statements individuais
+            $statements = array_filter(array_map('trim', explode(';', $sqlContent)));
+            
+            $successCount = 0;
+            $errorCount = 0;
+            $lastError = '';
+            
+            foreach ($statements as $statement) {
+                if (empty($statement)) continue;
+                
+                // Ignorar comandos CREATE DATABASE (o banco já existe)
+                if (stripos($statement, 'CREATE DATABASE') !== false) {
+                    continue;
+                }
+                
+                try {
+                    $pdo->exec($statement);
+                    $successCount++;
+                } catch (PDOException $e) {
+                    // Ignora erros de "já existe"
+                    if (strpos($e->getMessage(), 'already exists') === false && 
+                        strpos($e->getMessage(), 'Duplicate key') === false) {
+                        $errorCount++;
+                        $lastError = $e->getMessage();
+                    }
+                }
+            }
+            
+            if ($errorCount > 0) {
+                throw new Exception("{$successCount} tabelas criadas com sucesso, mas {$errorCount} falharam. Último erro: {$lastError}");
+            }
             
             // Marcar como instalado
             file_put_contents($installedFile, date('Y-m-d H:i:s'));

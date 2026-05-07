@@ -7,19 +7,13 @@
 -- INSTALAÇÃO HOSTINGER:
 -- Este script será executado automaticamente pelo install.php
 -- OU pode ser importado manualmente via phpMyAdmin
+-- 
+-- IMPORTANTE: O banco de dados deve ser criado no painel da Hostinger
+-- antes de executar este script. Use: u624766619_encartes
 -- ============================================================
 
--- Nota: O install.php cria o banco automaticamente se não existir
--- Se estiver importando manualmente, crie primeiro o banco:
--- CREATE DATABASE IF NOT EXISTS `u624766619_encartes` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
--- USE `u624766619_encartes`;
-
--- Criar banco de dados (será ignorado se já existir na instalação manual)
-CREATE DATABASE IF NOT EXISTS `encarts_db`
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
-USE `encarts_db`;
+-- Nota: Não é necessário criar o banco aqui, pois ele já existe
+-- O install.php seleciona o banco automaticamente baseado na configuração
 
 -- ============================================================
 -- TABELA: users
