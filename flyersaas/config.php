@@ -139,20 +139,22 @@ function isSystemReady() {
 
 // Redirecionar para instalação se necessário
 function checkInstallation() {
-    // Não verifica se já estiver na página de instalação
+    // Não verifica se já estiver na página de instalação ou em arquivos essenciais
     $currentPage = basename($_SERVER['PHP_SELF']);
-    if ($currentPage === 'install.php') {
+    $allowedPages = ['install.php', 'config.php'];
+    
+    if (in_array($currentPage, $allowedPages)) {
         return;
+    }
+    
+    // Verifica primeiro se o arquivo .env existe
+    if (!file_exists(ROOT_PATH . '/.env')) {
+        redirect('install.php');
     }
     
     // Se não estiver instalado ou faltar tabelas, redireciona para install.php
     if (!isSystemReady()) {
-        // Usa caminho relativo se BASE_URL não estiver definido corretamente
-        if (defined('BASE_URL') && BASE_URL) {
-            redirect(BASE_URL . '/install.php');
-        } else {
-            redirect('install.php');
-        }
+        redirect('install.php');
     }
 }
 

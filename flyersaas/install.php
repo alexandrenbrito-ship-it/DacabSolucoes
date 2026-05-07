@@ -135,14 +135,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         
         if (empty($errors)) {
             try {
-                // Testar conexão novamente
-                $dsn = "mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4";
+                // PRIMEIRO: Conectar SEM selecionar o banco para criar se necessário
+                $dsnRoot = "mysql:host=$dbHost;charset=utf8mb4";
                 $options = [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                     PDO::ATTR_EMULATE_PREPARES => false,
                 ];
                 
+                $pdoRoot = new PDO($dsnRoot, $dbUser, $dbPass, $options);
+                
+                // Criar banco de dados se não existir
+                $pdoRoot->exec("CREATE DATABASE IF NOT EXISTS `$dbName` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+                
+                // AGORA: Conectar ao banco específico
+                $dsn = "mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4";
                 $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
                 $pdo->exec("SET NAMES utf8mb4");
                 
@@ -170,44 +177,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $migrationsPath = __DIR__ . '/database/migrations/';
                 $migrationsExecuted = 0;
                 
-                if (is_dir($migrationsPath)) {
-                    $files = glob($migrationsPath . '*.sql');
-                    sort($files);
-                    
-                    // Criar tabela migrations se não existir
+                if (!is_dir($migrationsPath)) {
+                    throw new Exception("Pasta de migrações não encontrada: {$migrationsPath}");
+                }
+                
+                $files = glob($migrationsPath . '*.sql');
+                if (empty($files)) {
+                    throw new Exception("Nenhum arquivo de migração encontrado em {$migrationsPath}");
+                }
+                
+                sort($files);
+                
+                // Criar tabela migrations se não existir
+                try {
                     $pdo->exec("CREATE TABLE IF NOT EXISTS migrations (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         migration VARCHAR(255) NOT NULL,
                         executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )");
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                } catch (PDOException $e) {
+                    // Ignora se já existir
+                }
+                
+                foreach ($files as $file) {
+                    $migrationName = basename($file);
                     
-                    foreach ($files as $file) {
-                        $migrationName = basename($file);
-                        
+                    try {
                         // Verificar se já foi executada
                         $stmt = $pdo->prepare("SELECT COUNT(*) FROM migrations WHERE migration = ?");
                         $stmt->execute([$migrationName]);
                         
-                        if ($stmt->fetchColumn() == 0) {
-                            $sql = file_get_contents($file);
-                            
-                            // Dividir em múltiplos statements
-                            $statements = array_filter(
-                                array_map('trim', explode(';', $sql)),
-                                function($s) { return !empty($s) && !preg_match('/^--/', $s); }
-                            );
-                            
-                            foreach ($statements as $statement) {
-                                if (!empty(trim($statement))) {
+                        if ($stmt->fetchColumn() > 0) {
+                            continue; // Já executada
+                        }
+                        
+                        $sql = file_get_contents($file);
+                        
+                        if ($sql === false) {
+                            throw new Exception("Não foi possível ler o arquivo {$migrationName}");
+                        }
+                        
+                        // Remover comentários
+                        $sql = preg_replace('/--.*$/m', '', $sql);
+                        $sql = preg_replace('/\/\*.*?\*\//s', '', $sql);
+                        
+                        // Dividir em múltiplos statements por ponto-e-vírgula
+                        $statements = array_filter(
+                            array_map('trim', explode(';', $sql)),
+                            function($s) { 
+                                return !empty($s) && 
+                                       !preg_match('/^\s*$/', $s) && 
+                                       !preg_match('/^\s*--/', $s); 
+                            }
+                        );
+                        
+                        foreach ($statements as $statement) {
+                            $statement = trim($statement);
+                            if (!empty($statement)) {
+                                try {
                                     $pdo->exec($statement);
+                                } catch (PDOException $e) {
+                                    $errMsg = $e->getMessage();
+                                    // Ignora erros de "table already exists" ou "duplicate key"
+                                    if (strpos($errMsg, 'already exists') !== false ||
+                                        strpos($errMsg, 'Duplicate') !== false ||
+                                        strpos($errMsg, 'Duplicate key') !== false) {
+                                        continue;
+                                    }
+                                    throw new Exception($e->getMessage());
                                 }
                             }
-                            
-                            // Registrar migração
-                            $stmt = $pdo->prepare("INSERT INTO migrations (migration) VALUES (?)");
-                            $stmt->execute([$migrationName]);
-                            $migrationsExecuted++;
                         }
+                        
+                        // Registrar migração
+                        $stmt = $pdo->prepare("INSERT INTO migrations (migration) VALUES (?)");
+                        $stmt->execute([$migrationName]);
+                        $migrationsExecuted++;
+                        
+                    } catch (Exception $e) {
+                        throw new Exception("Erro na migração {$migrationName}: " . $e->getMessage());
                     }
                 }
                 
@@ -253,16 +301,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Limpar sessão
                 unset($_SESSION['db_config']);
                 
+                // Remover arquivo .env temporário para forçar recriação com permissões corretas na próxima vez
+                // (já foi criado acima com chmod 0444)
+                
                 // Redirecionar após 3 segundos
                 header('Refresh: 3; url=index.php');
                 
             } catch (Exception $e) {
                 $errors[] = 'Erro na instalação: ' . $e->getMessage();
+                $errors[] = 'Detalhe: Verifique se o usuário do banco tem permissão para CREATE DATABASE e CREATE TABLE.';
                 
                 // Remover .env se houve erro
-                if (file_exists($envPath)) {
-                    chmod($envPath, 0644);
-                    unlink($envPath);
+                if (isset($envPath) && file_exists($envPath)) {
+                    @chmod($envPath, 0644);
+                    @unlink($envPath);
                 }
             }
         }
