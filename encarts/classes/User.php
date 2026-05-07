@@ -312,9 +312,10 @@ class User {
             $total = (int) $stmt->fetch()['total'];
             $pages = ceil($total / $limit);
             
-            // Lista de usuários
+            // Lista de usuários com contagem de encarts
             $stmt = $this->db->prepare("
-                SELECT u.*, r.name as role_name, p.name as plan_name, p.slug as plan_slug
+                SELECT u.*, r.name as role_name, p.name as plan_name, p.slug as plan_slug,
+                       (SELECT COUNT(*) FROM encarts WHERE user_id = u.id) as encarts_count
                 FROM users u
                 LEFT JOIN roles r ON u.role_id = r.id
                 LEFT JOIN plans p ON u.plan_id = p.id

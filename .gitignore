@@ -1,56 +1,23 @@
 ```
-# Environment files
-.env
-.env.local
-.env.*
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-
-# Editor/IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
+# Compiled and build artifacts
+*.pyc
+__pycache__/
 
 # Dependencies
-node_modules/
-vendor/
+venv/
+.venv/
 
-# Build artifacts
-dist/
-build/
-target/
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.a
-*.out
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
-# Python specific
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-.eggs/
-.coverage
-htmlcov/
-.mypy_cache/
-.pytest_cache/
-.tox/
+# Environment
+.env
+.env.local
+*.env.*
 
-# PHP specific
-*.phar
-composer.lock
-
-# OS generated files
-.DS_Store
-Thumbs.db
+# Editors
+.vscode/
+.idea/
 ```
