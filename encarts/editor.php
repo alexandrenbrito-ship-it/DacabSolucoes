@@ -3,16 +3,12 @@
  * /encarts/editor.php
  * Editor visual de encarts com Canvas HTML5
  */
-session_start();
-require_once __DIR__ . '/classes/Database.php';
-require_once __DIR__ . '/classes/Auth.php';
 
-$auth = new Auth();
-if (!$auth->isAuthenticated()) {
-    header('Location: index.php');
-    exit;
-}
-$user = $auth->getCurrentUser();
+require_once __DIR__ . '/config/clerk.php';
+require_once __DIR__ . '/classes/ClerkAuth.php';
+
+// Verificar autenticação via Clerk
+$user = ClerkAuth::requireAuth();
 $encartId = isset($_GET['id']) ? (int)$_GET['id'] : null;
 ?>
 <!DOCTYPE html>
@@ -25,6 +21,9 @@ $encartId = isset($_GET['id']) ? (int)$_GET['id'] : null;
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Open+Sans&family=Roboto:wght@300;400;700&family=Montserrat:wght@400;700;900&family=Anton&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/encarts/assets/css/editor.css">
+    
+    <!-- Clerk JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"></script>
 </head>
 <body>
     <div class="editor-layout">

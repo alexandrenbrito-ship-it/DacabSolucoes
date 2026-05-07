@@ -18,12 +18,14 @@
 -- ============================================================
 -- TABELA: users
 -- Armazena os usuários do sistema com informações de conta e plano
+-- Integração com Clerk para autenticação
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `users` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `clerk_user_id` VARCHAR(255) UNIQUE NOT NULL COMMENT 'ID único do usuário no Clerk (ex: user_2abc123xyz)',
+    `clerk_email` VARCHAR(255) NOT NULL COMMENT 'Email vindo do Clerk',
     `name` VARCHAR(100) NOT NULL COMMENT 'Nome completo do usuário',
-    `email` VARCHAR(255) NOT NULL UNIQUE COMMENT 'E-mail único para login',
-    `password_hash` VARCHAR(255) NOT NULL COMMENT 'Hash da senha (bcrypt)',
+    `email` VARCHAR(255) NOT NULL UNIQUE COMMENT 'E-mail único para referência',
     `plan` ENUM('free', 'pro') DEFAULT 'free' COMMENT 'Tipo de plano: free ou pro',
     `avatar_url` VARCHAR(500) DEFAULT NULL COMMENT 'URL da imagem de perfil',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Data de criação da conta',
@@ -31,29 +33,27 @@ CREATE TABLE IF NOT EXISTS `users` (
     `last_login` TIMESTAMP NULL DEFAULT NULL COMMENT 'Último login realizado',
     `is_active` TINYINT(1) DEFAULT 1 COMMENT 'Conta ativa (1) ou desativada (0)',
     
+    INDEX `idx_clerk_user_id` (`clerk_user_id`),
     INDEX `idx_email` (`email`),
     INDEX `idx_plan` (`plan`),
     INDEX `idx_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tabela de usuários do sistema';
 
 -- ============================================================
--- TABELA: sessions
--- Gerencia sessões ativas dos usuários com tokens seguros
+-- TABELA: user_sync_log
+-- Registro de sincronização de usuários via webhook do Clerk
 -- ============================================================
-CREATE TABLE IF NOT EXISTS `sessions` (
+CREATE TABLE IF NOT EXISTS `user_sync_log` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `user_id` INT UNSIGNED NOT NULL COMMENT 'ID do usuário dono da sessão',
-    `token` VARCHAR(255) NOT NULL UNIQUE COMMENT 'Token de sessão criptograficamente seguro',
-    `ip_address` VARCHAR(45) NOT NULL COMMENT 'IP do cliente (IPv4 ou IPv6)',
-    `user_agent` TEXT COMMENT 'User agent do navegador',
-    `expires_at` TIMESTAMP NOT NULL COMMENT 'Data de expiração da sessão',
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Data de criação da sessão',
+    `clerk_user_id` VARCHAR(255) NOT NULL COMMENT 'ID do usuário no Clerk',
+    `event_type` VARCHAR(50) NOT NULL COMMENT 'Tipo de evento: user.created, user.updated, user.deleted',
+    `payload` JSON COMMENT 'Payload completo do webhook',
+    `synced_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Data da sincronização',
     
-    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-    INDEX `idx_token` (`token`),
-    INDEX `idx_user_id` (`user_id`),
-    INDEX `idx_expires_at` (`expires_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tabela de sessões ativas';
+    INDEX `idx_clerk_user_id` (`clerk_user_id`),
+    INDEX `idx_event_type` (`event_type`),
+    INDEX `idx_synced_at` (`synced_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Log de sincronização de usuários via Clerk webhook';
 
 -- ============================================================
 -- TABELA: templates
@@ -120,12 +120,8 @@ CREATE TABLE IF NOT EXISTS `encarts` (
 -- INSERÇÃO DE DADOS INICIAIS
 -- ============================================================
 
--- Usuários de teste (senhas: admin123, user123, pro123)
--- Hash gerado com password_hash('senha', PASSWORD_BCRYPT)
-INSERT INTO `users` (`name`, `email`, `password_hash`, `plan`, `is_active`) VALUES
-('Administrador', 'admin@encarts.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'pro', 1),
-('Usuário Free', 'free@encarts.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'free', 1),
-('Usuário Pro', 'pro@encarts.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'pro', 1);
+-- Nota: Os usuários agora são criados automaticamente via Clerk
+-- quando fazem o primeiro login. Não é necessário inserir usuários manuais.
 
 -- Templates de exemplo com canvas_data JSON realista
 INSERT INTO `templates` (`name`, `category`, `canvas_data`, `thumbnail_url`, `is_premium`, `order_position`) VALUES

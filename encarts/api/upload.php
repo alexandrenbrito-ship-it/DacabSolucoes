@@ -8,7 +8,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 // Pre-flight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -18,18 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Carregar classes necessárias
 require_once dirname(__DIR__) . '/classes/Database.php';
-require_once dirname(__DIR__) . '/classes/Auth.php';
-
-$auth = new Auth();
+require_once dirname(__DIR__) . '/classes/ClerkAuth.php';
 
 // Verificar autenticação
-if (!$auth->isAuthenticated()) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Não autorizado. Faça login.']);
-    exit;
-}
-
-$user = $auth->getCurrentUser();
+$user = ClerkAuth::requireAuth();
 $userId = (int)$user['id'];
 
 // Apenas método POST permitido
