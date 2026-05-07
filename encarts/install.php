@@ -102,8 +102,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Carregar configurações salvas
             require_once __DIR__ . '/config/database.php';
             
-            // Verificar se conseguimos conectar e selecionar o banco
-            $pdo->exec("USE `" . str_replace('`', '', $dbName) . "`");
+            // Reconectar incluindo o banco de dados no DSN (necessário para comandos USE funcionarem)
+            $dsn = "mysql:host=" . $dbHost . ";dbname=" . $dbName . ";charset=utf8mb4";
+            $pdo = new PDO($dsn, $dbUser, $dbPass, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ]);
             
             // Ler script SQL
             $sqlFile = __DIR__ . '/sql/schema.sql';
@@ -127,21 +131,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             foreach ($statements as $statement) {
                 if (empty($statement)) continue;
                 
-                // Ignorar comandos CREATE DATABASE (o banco já existe)
-                if (stripos($statement, 'CREATE DATABASE') !== false) {
+                // Ignorar comandos CREATE DATABASE e USE (já estamos conectados ao banco correto)
+                if (stripos($statement, 'CREATE DATABASE') !== false || 
+                    stripos(trim($statement), 'USE ') === 0) {
                     continue;
-                }
-                
-                // Executar USE statement primeiro se existir
-                if (stripos(trim($statement), 'USE ') === 0) {
-                    try {
-                        $pdo->exec($statement);
-                        $successCount++;
-                        continue;
-                    } catch (PDOException $e) {
-                        // Se falhar o USE, continua tentando criar as tabelas
-                        // O banco já foi selecionado na conexão
-                    }
                 }
                 
                 try {

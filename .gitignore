@@ -1,32 +1,56 @@
 ```
-# Environment
+# Environment files
 .env
 .env.local
-*.env.*
+.env.*
 
 # Logs
 *.log
 
 # Temporary files
 *.tmp
+
+# Editor/IDE files
+.vscode/
+.idea/
 *.swp
 *.swo
 
 # Dependencies
 node_modules/
 vendor/
-composer.lock
 
 # Build artifacts
 dist/
 build/
+target/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+.coverage
+htmlcov/
+.mypy_cache/
+.pytest_cache/
+.tox/
+
+# PHP specific
 *.phar
+composer.lock
 
-# IDE
-.vscode/
-.idea/
-
-# OS
+# OS generated files
 .DS_Store
 Thumbs.db
 ```
