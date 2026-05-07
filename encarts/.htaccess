@@ -7,7 +7,9 @@
 # Ativar mod_rewrite
 RewriteEngine On
 
-# Definir base URL (ajuste se estiver em subdomínio)
+# Definir base URL (ajuste se estiver em subdomínio ou raiz)
+# Se estiver na raiz: RewriteBase /
+# Se estiver em subpasta: RewriteBase /encarts/
 RewriteBase /encarts/
 
 # ============================================================

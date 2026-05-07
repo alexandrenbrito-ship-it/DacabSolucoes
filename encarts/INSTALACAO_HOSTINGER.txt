@@ -1,0 +1,236 @@
+# ============================================================
+# INSTRUÇÕES DE INSTALAÇÃO - HOSTINGER
+# Sistema Encarts Digital
+# ============================================================
+
+## 🚀 PASSO A PASSO COMPLETO
+
+### 1️⃣ FAÇA UPLOAD DOS ARQUIVOS
+
+**Via Gerenciador de Arquivos da Hostinger:**
+1. Acesse o painel da Hostinger
+2. Vá em "Gerenciador de Arquivos"
+3. Navegue até `public_html/`
+4. Crie uma pasta chamada `encarts` (opcional, pode ser na raiz)
+5. Faça upload de TODOS os arquivos do sistema
+
+**Via FTP (FileZilla, Cyberduck, etc.):**
+- Host: `ftp.seudominio.com`
+- Usuário: seu usuário FTP
+- Senha: sua senha FTP
+- Porta: 21
+- Destino: `/public_html/encarts/`
+
+---
+
+### 2️⃣ ACESSE O INSTALADOR
+
+No seu navegador, digite:
+```
+https://seudominio.com/encarts/install.php
+```
+
+**OU** se estiver na raiz:
+```
+https://seudominio.com/install.php
+```
+
+---
+
+### 3️⃣ CONFIGURE O SISTEMA
+
+O instalador já vem com seus dados pré-configurados:
+
+#### DADOS DO BANCO DE DADOS (já preenchidos):
+- **Host:** localhost
+- **Banco:** u624766619_encartes
+- **Usuário:** u624766619_encartes
+- **Senha:** Pt190912!@#
+
+#### URL DA APLICAÇÃO:
+Edite para sua URL real:
+- Ex: `https://meusite.com/encarts`
+- Ou: `https://encarts.meudominio.com`
+
+Clique em **"Salvar Configurações"**
+
+---
+
+### 4️⃣ INSTALE O BANCO DE DADOS
+
+Após salvar as configurações:
+1. O sistema testará a conexão com o banco
+2. Clique em **"Instalar Banco de Dados"**
+3. Aguarde a criação das tabelas
+4. Pronto! Instalação concluída!
+
+---
+
+### 5️⃣ FAÇA LOGIN
+
+Acesse: `https://seudominio.com/encarts/index.php`
+
+**Contas de teste criadas automaticamente:**
+
+| Perfil | Email | Senha | Limite |
+|--------|-------|-------|--------|
+| Admin | admin@encarts.com | admin123 | Ilimitado |
+| Free | user@free.com | user123 | 5 encarts |
+| Pro | user@pro.com | user123 | Ilimitado |
+
+---
+
+### 6️⃣ REMOVA O INSTALADOR (SEGUANÇA!)
+
+Após instalar, DELETE o arquivo `install.php`:
+- Via Gerenciador de Arquivos
+- Ou via FTP
+
+Isso impede que alguém reinstale o sistema.
+
+---
+
+## 🔧 CONFIGURAÇÕES MANUAIS (OPCIONAL)
+
+Se precisar alterar as credenciais do banco:
+
+### Edite o arquivo `.env` na raiz do sistema:
+
+```env
+DB_HOST=localhost
+DB_NAME=u624766619_encartes
+DB_USER=u624766619_encartes
+DB_PASS=Pt190912!@#
+APP_URL=https://seudominio.com/encarts
+APP_ENV=production
+```
+
+---
+
+## 📁 ESTRUTURA DE PASTAS NA HOSTINGER
+
+```
+public_html/
+└── encarts/
+    ├── install.php          ← ACESSE PARA INSTALAR
+    ├── index.php            ← Login
+    ├── dashboard.php        ← Painel
+    ├── editor.php           ← Editor
+    ├── .env                 ← Configurações (criado pelo instalador)
+    ├── .htaccess            ← Regras Apache
+    │
+    ├── config/
+    │   └── database.php
+    │
+    ├── classes/
+    │   ├── Database.php
+    │   ├── Auth.php
+    │   └── ...
+    │
+    ├── api/
+    │   ├── auth.php
+    │   ├── encarts.php
+    │   └── ...
+    │
+    ├── assets/
+    │   ├── css/
+    │   ├── js/
+    │   └── uploads/         ← Permissão 755
+    │
+    └── sql/
+        └── schema.sql
+```
+
+---
+
+## ⚠️ PERMISSÕES NECESSÁRIAS
+
+No Gerenciador de Arquivos da Hostinger:
+
+- **Pastas:** 755
+  - `/assets/`
+  - `/assets/uploads/`
+  - `/config/`
+  - `/classes/`
+  - `/api/`
+
+- **Arquivos:** 644
+  - Todos os arquivos `.php`
+  - Todos os arquivos `.js`, `.css`
+  - Arquivo `.env` (após criação)
+
+---
+
+## 🐛 PROBLEMAS COMUNS
+
+### ❌ Erro de conexão com banco de dados
+
+**Solução:**
+1. Verifique no painel da Hostinger → Banco de Dados MySQL
+2. Confirme se o banco `u624766619_encartes` existe
+3. Verifique usuário e senha
+4. Teste no phpMyAdmin
+
+### ❌ Página em branco
+
+**Solução:**
+1. Edite `.env` e mude `APP_ENV=development`
+2. Recarregue a página para ver o erro
+3. Corrija o problema
+4. Volte para `APP_ENV=production`
+
+### ❌ Erro 403 Forbidden
+
+**Solução:**
+1. Verifique se `.htaccess` foi enviado
+2. Permissões corretas: pastas 755, arquivos 644
+3. Verifique se o mod_rewrite está ativo
+
+### ❌ Upload não funciona
+
+**Solução:**
+1. Pasta `/assets/uploads/` deve ter permissão 755
+2. Verifique limite de upload no PHP da Hostinger
+3. Mínimo necessário: 5MB
+
+---
+
+## ✅ CHECKLIST FINAL
+
+Após instalar, teste:
+
+- [ ] Login funciona
+- [ ] Dashboard carrega
+- [ ] Editor abre corretamente
+- [ ] Consegue criar um encart
+- [ ] Upload de imagem funciona
+- [ ] Exportação PNG/JPG funciona
+- [ ] Logout funciona
+- [ ] Arquivo `install.php` foi removido
+
+---
+
+## 📞 SUPORTE
+
+Se ainda tiver problemas:
+
+1. Verifique os logs de erro na Hostinger
+2. Acesse: Painel → Logs → Error Log
+3. Ou ative o modo development no `.env`
+
+---
+
+## 🎉 PRONTO!
+
+Seu sistema Encarts está instalado e pronto para uso!
+
+Acesse: `https://seudominio.com/encarts/`
+
+Divirta-se criando encarts incríveis! 🎨
+
+---
+
+**Versão:** 1.0.0  
+**Compatível com:** Hostinger  
+**PHP mínimo:** 7.4  
+**MySQL mínimo:** 5.7

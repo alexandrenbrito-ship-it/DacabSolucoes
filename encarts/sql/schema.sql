@@ -3,9 +3,18 @@
 -- Script de criação do banco de dados Encarts Digital System
 -- Compatível com MySQL 5.7+ e MariaDB 10.2+
 -- Charset: utf8mb4 (suporte completo a emojis e caracteres especiais)
+-- 
+-- INSTALAÇÃO HOSTINGER:
+-- Este script será executado automaticamente pelo install.php
+-- OU pode ser importado manualmente via phpMyAdmin
 -- ============================================================
 
--- Criar banco de dados
+-- Nota: O install.php cria o banco automaticamente se não existir
+-- Se estiver importando manualmente, crie primeiro o banco:
+-- CREATE DATABASE IF NOT EXISTS `u624766619_encartes` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- USE `u624766619_encartes`;
+
+-- Criar banco de dados (será ignorado se já existir na instalação manual)
 CREATE DATABASE IF NOT EXISTS `encarts_db`
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;
