@@ -47,11 +47,11 @@ function loadEnv($path = null) {
 // Carregar variáveis do .env
 loadEnv();
 
-// Configurações do banco de dados
+// Configurações do banco de dados - Valores padrão para Hostinger
 define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'encarts_db');
-define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') ?: '');
+define('DB_NAME', getenv('DB_NAME') ?: 'u624766619_encartes');
+define('DB_USER', getenv('DB_USER') ?: 'u624766619_encartes');
+define('DB_PASS', getenv('DB_PASS') ?: 'Pt190912!@#');
 define('DB_CHARSET', getenv('DB_CHARSET') ?: 'utf8mb4');
 
 // DSN para conexão PDO
