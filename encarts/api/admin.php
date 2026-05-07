@@ -55,6 +55,20 @@ try {
             echo json_encode(['success' => true, 'data' => $userData]);
             break;
             
+        case 'get_plan':
+            // Obter detalhes de um plano
+            $planId = (int)($_GET['plan_id'] ?? 0);
+            if (!$planId) {
+                throw new Exception('ID do plano não informado');
+            }
+            $planModel = new Plan();
+            $planData = $planModel->getById($planId);
+            if (!$planData) {
+                throw new Exception('Plano não encontrado');
+            }
+            echo json_encode(['success' => true, 'data' => $planData]);
+            break;
+            
         case 'update_role':
             // Atualizar role do usuário
             $data = json_decode(file_get_contents('php://input'), true);
