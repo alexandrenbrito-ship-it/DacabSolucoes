@@ -1,1 +1,19 @@
-Nothing needs to be added to the .gitignore file based on the provided changes. The listed files (INSTRUCOES_INSTALACAO.md, config.php, install.php) are all source/configuration files that should be tracked in version control. There are no build artifacts, dependency directories, temporary files, or other items that need to be ignored.
+```
+# Environment and config
+.env
+.env.local
+.env.*
+
+# Dependencies
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Web server
+.htaccess
+
+# Uploads directory (if it contains user-generated content)
+assets/uploads/
+```

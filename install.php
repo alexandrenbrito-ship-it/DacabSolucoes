@@ -1,324 +1,316 @@
 <?php
 /**
- * FlyerSaaS - Instalador do Sistema
- * 
- * Este arquivo deve ser executado apenas na primeira instalação.
- * Após a instalação concluída, este arquivo pode ser removido por segurança.
+ * Página de Instalação do FlyerSaaS
+ * Guia o usuário através da configuração inicial do sistema
  */
 
+// Inicia sessão
 session_start();
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
 
-// Desabilitar verificação de instalação durante o próprio install
-define('SKIP_INSTALL_CHECK', true);
+// Define caminho base
+define('BASE_PATH', __DIR__);
 
-$step = isset($_GET['step']) ? (int)$_GET['step'] : 1;
-$error = '';
-$success = '';
+// Carrega funções auxiliares
+require_once BASE_PATH . '/includes/functions.php';
 
-// Processar formulário
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    try {
-        if ($_POST['action'] === 'test_db') {
-            // Passo 1: Testar conexão com o banco
-            $host = trim($_POST['db_host'] ?? 'localhost');
-            $dbname = trim($_POST['db_name'] ?? '');
-            $username = trim($_POST['db_user'] ?? '');
-            $password = $_POST['db_pass'] ?? '';
-            
-            if (empty($dbname) || empty($username)) {
-                throw new Exception("Preencha todos os campos do banco de dados.");
-            }
-            
-            // Tentar conectar SEM selecionar o banco primeiro (para criar se necessário)
-            $dsn = "mysql:host=$host;charset=utf8mb4";
-            $pdo = new PDO($dsn, $username, $password, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]);
-            
-            // Verificar se o banco existe, se não, tentar criar
-            $stmt = $pdo->query("SHOW DATABASES LIKE '$dbname'");
-            if ($stmt->rowCount() === 0) {
-                // Banco não existe, tentar criar
-                try {
-                    $pdo->exec("CREATE DATABASE `$dbname` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-                    $success = "Banco de dados '$dbname' criado com sucesso!";
-                } catch (PDOException $e) {
-                    // Se não conseguir criar, assumir que já existe ou usar mesmo assim
-                    // Alguns hosts não permitem CREATE DATABASE via SQL
-                    if (strpos($e->getMessage(), 'access denied') !== false) {
-                        $success = "Conexão estabelecida. Certifique-se de que o banco '$dbname' foi criado no painel da hospedagem.";
-                    } else {
-                        throw $e;
-                    }
+// Se já estiver instalado, redireciona para login
+if (isSystemInstalled()) {
+    header('Location: login.php');
+    exit;
+}
+
+$errors = [];
+$step = $_GET['step'] ?? 1;
+$dbConnected = false;
+
+// Processa formulário
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    
+    // Passo 1: Dados do Banco
+    if ($action === 'test_db') {
+        $dbHost = trim($_POST['db_host'] ?? '');
+        $dbName = trim($_POST['db_name'] ?? '');
+        $dbUser = trim($_POST['db_user'] ?? '');
+        $dbPass = $_POST['db_pass'] ?? '';
+        
+        if (empty($dbHost) || empty($dbName) || empty($dbUser)) {
+            $errors[] = "Preencha todos os campos do banco de dados.";
+        } else {
+            // Testa conexão
+            try {
+                $dsn = "mysql:host=$dbHost;charset=utf8mb4";
+                $options = [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                ];
+                
+                $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
+                
+                // Verifica/cria banco
+                $stmt = $pdo->query("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '$dbName'");
+                if ($stmt->rowCount() == 0) {
+                    $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbName` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
                 }
-            } else {
-                $success = "Conexão com o banco '$dbname' estabelecida com sucesso!";
-            }
-            
-            // Salvar dados na sessão para próximo passo
-            $_SESSION['install_data'] = [
-                'db_host' => $host,
-                'db_name' => $dbname,
-                'db_user' => $username,
-                'db_pass' => $password
-            ];
-            
-            $step = 2;
-            
-        } elseif ($_POST['action'] === 'set_url') {
-            // Passo 2: Definir URL base
-            if (empty($_POST['base_url'])) {
-                throw new Exception("A URL base é obrigatória.");
-            }
-            
-            $base_url = rtrim(trim($_POST['base_url']), '/');
-            
-            // Validar URL
-            if (!filter_var($base_url, FILTER_VALIDATE_URL)) {
-                throw new Exception("URL inválida. Exemplo: https://seusite.com");
-            }
-            
-            $_SESSION['install_data']['base_url'] = $base_url;
-            $step = 3;
-            
-        } elseif ($_POST['action'] === 'install') {
-            // Passo 3: Instalação final
-            if (empty($_SESSION['install_data'])) {
-                throw new Exception("Dados de instalação não encontrados. Reinicie o processo.");
-            }
-            
-            $data = $_SESSION['install_data'];
-            $admin_name = trim($_POST['admin_name'] ?? '');
-            $admin_email = trim($_POST['admin_email'] ?? '');
-            $admin_pass = $_POST['admin_pass'] ?? '';
-            
-            if (empty($admin_name) || empty($admin_email) || empty($admin_pass)) {
-                throw new Exception("Preencha todos os dados do administrador.");
-            }
-            
-            if (!filter_var($admin_email, FILTER_VALIDATE_EMAIL)) {
-                throw new Exception("E-mail do administrador inválido.");
-            }
-            
-            if (strlen($admin_pass) < 6) {
-                throw new Exception("A senha deve ter pelo menos 6 caracteres.");
-            }
-            
-            // Conectar ao banco com os dados salvos
-            $dsn = "mysql:host={$data['db_host']};dbname={$data['db_name']};charset=utf8mb4";
-            $pdo = new PDO($dsn, $data['db_user'], $data['db_pass'], [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-            ]);
-            
-            // Criar todas as tabelas (usando CREATE TABLE IF NOT EXISTS)
-            $tables_sql = "
-                -- Tabela de migrações
-                CREATE TABLE IF NOT EXISTS migrations (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    migration VARCHAR(255) NOT NULL UNIQUE,
-                    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                 
-                -- Tabela de usuários
-                CREATE TABLE IF NOT EXISTS users (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(100) NOT NULL,
-                    email VARCHAR(100) NOT NULL UNIQUE,
-                    password VARCHAR(255) NOT NULL,
-                    store_name VARCHAR(150),
-                    phone VARCHAR(20),
-                    cnpj VARCHAR(20),
-                    is_admin TINYINT(1) DEFAULT 0,
-                    status TINYINT(1) DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                // Testa conexão com o banco específico
+                $dsnWithDb = "$dsn;dbname=$dbName";
+                $pdoTest = new PDO($dsnWithDb, $dbUser, $dbPass, $options);
                 
-                -- Tabela de planos
-                CREATE TABLE IF NOT EXISTS plans (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(50) NOT NULL,
-                    price DECIMAL(10,2) NOT NULL,
-                    duration_days INT DEFAULT 30,
-                    images_limit INT DEFAULT 100,
-                    flyers_limit INT DEFAULT 5,
-                    description TEXT,
-                    status TINYINT(1) DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                $_SESSION['install_db'] = [
+                    'host' => $dbHost,
+                    'name' => $dbName,
+                    'user' => $dbUser,
+                    'pass' => $dbPass
+                ];
                 
-                -- Tabela de assinaturas dos usuários
-                CREATE TABLE IF NOT EXISTS user_subscriptions (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    plan_id INT NOT NULL,
-                    start_date DATE NOT NULL,
-                    end_date DATE NOT NULL,
-                    images_used INT DEFAULT 0,
-                    flyers_used INT DEFAULT 0,
-                    status ENUM('active', 'expired', 'cancelled') DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE RESTRICT
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                $dbConnected = true;
+                $step = 2;
                 
-                -- Tabela de galeria de imagens
-                CREATE TABLE IF NOT EXISTS gallery_images (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    original_name VARCHAR(255) NOT NULL,
-                    stored_name VARCHAR(255) NOT NULL,
-                    file_path VARCHAR(500) NOT NULL,
-                    mime_type VARCHAR(50),
-                    size INT,
-                    hash VARCHAR(32) NOT NULL,
-                    category VARCHAR(50),
-                    uploaded_by INT,
-                    views_count INT DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL,
-                    UNIQUE KEY unique_hash (hash)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-                
-                -- Tabela de encartes
-                CREATE TABLE IF NOT EXISTS flyers (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    user_id INT NOT NULL,
-                    title VARCHAR(150) NOT NULL,
-                    description TEXT,
-                    status ENUM('draft', 'published') DEFAULT 'draft',
-                    pdf_path VARCHAR(500),
-                    html_content LONGTEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-                
-                -- Tabela de itens do encarte
-                CREATE TABLE IF NOT EXISTS flyer_items (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    flyer_id INT NOT NULL,
-                    product_name VARCHAR(150) NOT NULL,
-                    price DECIMAL(10,2) NOT NULL,
-                    description TEXT,
-                    image_id INT,
-                    position_order INT DEFAULT 0,
-                    FOREIGN KEY (flyer_id) REFERENCES flyers(id) ON DELETE CASCADE,
-                    FOREIGN KEY (image_id) REFERENCES gallery_images(id) ON DELETE SET NULL
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-                
-                -- Tabela de configurações do sistema
-                CREATE TABLE IF NOT EXISTS system_config (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    config_key VARCHAR(50) NOT NULL UNIQUE,
-                    config_value TEXT,
-                    description VARCHAR(255)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-            ";
-            
-            // Executar criação de tabelas
-            $statements = array_filter(array_map('trim', explode(';', $tables_sql)));
-            foreach ($statements as $sql) {
-                if (!empty($sql)) {
-                    $pdo->exec($sql);
-                }
+            } catch (PDOException $e) {
+                $errors[] = "Erro ao conectar: " . $e->getMessage();
             }
-            
-            // Registrar migração inicial
-            $pdo->exec("INSERT IGNORE INTO migrations (migration) VALUES ('001_initial_install')");
-            
-            // Criar administrador
-            $hashed_password = password_hash($admin_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("
-                INSERT INTO users (name, email, password, is_admin, status) 
-                VALUES (?, ?, ?, 1, 1)
-                ON DUPLICATE KEY UPDATE name=VALUES(name)
-            ");
-            $stmt->execute([$admin_name, $admin_email, $hashed_password]);
-            
-            // Criar plano básico padrão
-            $pdo->exec("
-                INSERT INTO plans (name, price, duration_days, images_limit, flyers_limit, description, status)
-                VALUES ('Básico', 29.90, 30, 100, 5, 'Plano inicial para pequenos mercados', 1)
-                ON DUPLICATE KEY UPDATE name=VALUES(name)
-            ");
-            
-            // Criar configurações padrão
-            $configs = [
-                ['site_name', 'FlyerSaaS', 'Nome do site'],
-                ['site_email', $admin_email, 'E-mail de contato'],
-                ['maintenance_mode', '0', 'Modo de manutenção (0=desligado, 1=ligado)']
-            ];
-            
-            $stmt_config = $pdo->prepare("
-                INSERT INTO system_config (config_key, config_value, description)
-                VALUES (?, ?, ?)
-                ON DUPLICATE KEY UPDATE config_value=VALUES(config_value)
-            ");
-            
-            foreach ($configs as $config) {
-                $stmt_config->execute($config);
-            }
-            
-            // Criar arquivo .env
-            $env_content = "<?php\n";
-            $env_content .= "// Configurações do Banco de Dados\n";
-            $env_content .= "define('DB_HOST', '" . addslashes($data['db_host']) . "');\n";
-            $env_content .= "define('DB_NAME', '" . addslashes($data['db_name']) . "');\n";
-            $env_content .= "define('DB_USER', '" . addslashes($data['db_user']) . "');\n";
-            $env_content .= "define('DB_PASS', '" . addslashes($data['db_pass']) . "');\n";
-            $env_content .= "\n";
-            $env_content .= "// Configurações do Sistema\n";
-            $env_content .= "define('BASE_URL', '" . addslashes($data['base_url']) . "');\n";
-            $env_content .= "define('INSTALLED', true);\n";
-            $env_content .= "\n";
-            $env_content .= "// Segurança\n";
-            $env_content .= "define('SITE_KEY', '" . bin2hex(random_bytes(32)) . "');\n";
-            
-            $env_file = __DIR__ . '/.env.php';
-            if (file_put_contents($env_file, $env_content)) {
-                chmod($env_file, 0444); // Somente leitura
-            }
-            
-            // Limpar sessão de instalação
-            unset($_SESSION['install_data']);
-            
-            $success = "Instalação concluída com sucesso! Redirecionando...";
-            $step = 4;
-            
-            // Criar diretórios necessários
-            $dirs = [
-                __DIR__ . '/assets/uploads/images',
-                __DIR__ . '/assets/uploads/flyers'
-            ];
-            
-            foreach ($dirs as $dir) {
-                if (!is_dir($dir)) {
-                    mkdir($dir, 0755, true);
-                }
-                // Criar .htaccess para proteger uploads
-                $htaccess = $dir . '/.htaccess';
-                if (!file_exists($htaccess)) {
-                    file_put_contents($htaccess, "RemoveHandler .php\nAddType text/html .html\n");
-                }
-            }
-            
         }
-    } catch (Exception $e) {
-        $error = "Erro: " . $e->getMessage();
-        if ($e->getPrevious()) {
-            $error .= "<br>Detalhe: " . $e->getPrevious()->getMessage();
+    }
+    
+    // Passo 2: URL Base
+    if ($action === 'save_url') {
+        if (!isset($_SESSION['install_db'])) {
+            $errors[] = "Dados do banco não encontrados. Volte ao início.";
+            $step = 1;
+        } else {
+            $baseUrl = trim($_POST['base_url'] ?? '');
+            
+            if (empty($baseUrl)) {
+                // Detecta automaticamente
+                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $path = dirname($_SERVER['SCRIPT_NAME']);
+                $baseUrl = $protocol . '://' . $host . rtrim($path, '/');
+            }
+            
+            $_SESSION['install_base_url'] = $baseUrl;
+            $step = 3;
+        }
+    }
+    
+    // Passo 3: Admin e Instalação Final
+    if ($action === 'install') {
+        if (!isset($_SESSION['install_db']) || !isset($_SESSION['install_base_url'])) {
+            $errors[] = "Dados de instalação incompletos. Volte ao início.";
+            $step = 1;
+        } else {
+            $adminName = trim($_POST['admin_name'] ?? '');
+            $adminEmail = trim($_POST['admin_email'] ?? '');
+            $adminPassword = $_POST['admin_password'] ?? '';
+            $adminConfirm = $_POST['admin_confirm'] ?? '';
+            
+            if (empty($adminName) || empty($adminEmail) || empty($adminPassword)) {
+                $errors[] = "Preencha todos os dados do administrador.";
+            } elseif ($adminPassword !== $adminConfirm) {
+                $errors[] = "As senhas do administrador não coincidem.";
+            } elseif (strlen($adminPassword) < 6) {
+                $errors[] = "A senha deve ter pelo menos 6 caracteres.";
+            } elseif (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = "E-mail do administrador inválido.";
+            } else {
+                // Executa instalação
+                try {
+                    $dbConfig = $_SESSION['install_db'];
+                    $baseUrl = $_SESSION['install_base_url'];
+                    
+                    // Conecta ao banco
+                    $dsn = "mysql:host={$dbConfig['host']};dbname={$dbConfig['name']};charset=utf8mb4";
+                    $options = [
+                        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    ];
+                    $conn = new PDO($dsn, $dbConfig['user'], $dbConfig['pass'], $options);
+                    
+                    // Cria todas as tabelas
+                    createTables($conn);
+                    
+                    // Cria arquivo .env.php
+                    $envContent = "<?php\nreturn [\n    'DB_HOST' => '" . addslashes($dbConfig['host']) . "',\n    'DB_NAME' => '" . addslashes($dbConfig['name']) . "',\n    'DB_USER' => '" . addslashes($dbConfig['user']) . "',\n    'DB_PASS' => '" . addslashes($dbConfig['pass']) . "',\n    'DB_CHARSET' => 'utf8mb4',\n    'BASE_URL' => '" . addslashes($baseUrl) . "',\n];\n";
+                    
+                    $envFile = BASE_PATH . '/.env.php';
+                    if (file_put_contents($envFile, $envContent) === false) {
+                        throw new Exception("Não foi possível criar o arquivo .env.php. Verifique as permissões da pasta.");
+                    }
+                    @chmod($envFile, 0444);
+                    
+                    // Cria arquivo de lock
+                    $lockFile = BASE_PATH . '/installed.lock';
+                    file_put_contents($lockFile, date('Y-m-d H:i:s'));
+                    @chmod($lockFile, 0444);
+                    
+                    // Cria administrador
+                    $hashedPassword = password_hash($adminPassword, PASSWORD_DEFAULT);
+                    $stmt = $conn->prepare("
+                        INSERT INTO users (name, email, password, is_admin, status, created_at) 
+                        VALUES (?, ?, ?, 1, 'active', NOW())
+                        ON DUPLICATE KEY UPDATE name=VALUES(name)
+                    ");
+                    $stmt->execute([$adminName, $adminEmail, $hashedPassword]);
+                    
+                    // Limpa sessão de instalação
+                    unset($_SESSION['install_db'], $_SESSION['install_base_url']);
+                    
+                    $step = 4; // Conclusão
+                    
+                } catch (Exception $e) {
+                    $errors[] = "Erro na instalação: " . $e->getMessage();
+                }
+            }
         }
     }
 }
 
-// Detectar URL base automaticamente
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-$detected_url = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']);
-$detected_url = rtrim($detected_url, '/');
+/**
+ * Cria todas as tabelas do banco de dados
+ */
+function createTables($conn) {
+    $tables = [
+        // Tabela migrations
+        "CREATE TABLE IF NOT EXISTS migrations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            migration VARCHAR(255) NOT NULL UNIQUE,
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        
+        // Tabela users
+        "CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            store_name VARCHAR(255) DEFAULT NULL,
+            phone VARCHAR(50) DEFAULT NULL,
+            cnpj VARCHAR(20) DEFAULT NULL,
+            is_admin TINYINT(1) DEFAULT 0,
+            status ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_email (email),
+            INDEX idx_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        
+        // Tabela plans
+        "CREATE TABLE IF NOT EXISTS plans (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            duration_days INT NOT NULL DEFAULT 30,
+            images_limit INT NOT NULL DEFAULT 100,
+            flyers_limit INT NOT NULL DEFAULT 5,
+            description TEXT DEFAULT NULL,
+            status ENUM('active', 'inactive') DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        
+        // Tabela user_subscriptions
+        "CREATE TABLE IF NOT EXISTS user_subscriptions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            plan_id INT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            images_used INT NOT NULL DEFAULT 0,
+            flyers_used INT NOT NULL DEFAULT 0,
+            status ENUM('active', 'expired', 'cancelled') DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE RESTRICT,
+            INDEX idx_user_status (user_id, status),
+            INDEX idx_end_date (end_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        
+        // Tabela gallery_images
+        "CREATE TABLE IF NOT EXISTS gallery_images (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            original_name VARCHAR(255) NOT NULL,
+            stored_name VARCHAR(255) NOT NULL,
+            file_path VARCHAR(500) NOT NULL,
+            mime_type VARCHAR(100) NOT NULL,
+            size INT NOT NULL DEFAULT 0,
+            hash VARCHAR(32) NOT NULL,
+            category VARCHAR(100) DEFAULT NULL,
+            uploaded_by INT NOT NULL,
+            views_count INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE,
+            INDEX idx_hash (hash),
+            INDEX idx_category (category),
+            INDEX idx_uploaded_by (uploaded_by)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        
+        // Tabela flyers
+        "CREATE TABLE IF NOT EXISTS flyers (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            description TEXT DEFAULT NULL,
+            status ENUM('draft', 'published', 'archived') DEFAULT 'draft',
+            pdf_path VARCHAR(500) DEFAULT NULL,
+            html_content LONGTEXT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            INDEX idx_user_status (user_id, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        
+        // Tabela flyer_items
+        "CREATE TABLE IF NOT EXISTS flyer_items (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            flyer_id INT NOT NULL,
+            product_name VARCHAR(255) NOT NULL,
+            price DECIMAL(10,2) NOT NULL,
+            description TEXT DEFAULT NULL,
+            image_id INT DEFAULT NULL,
+            position_order INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (flyer_id) REFERENCES flyers(id) ON DELETE CASCADE,
+            FOREIGN KEY (image_id) REFERENCES gallery_images(id) ON DELETE SET NULL,
+            INDEX idx_flyer (flyer_id),
+            INDEX idx_position (flyer_id, position_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        
+        // Tabela system_config
+        "CREATE TABLE IF NOT EXISTS system_config (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            config_key VARCHAR(100) NOT NULL UNIQUE,
+            config_value TEXT DEFAULT NULL,
+            description VARCHAR(255) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    ];
+    
+    foreach ($tables as $sql) {
+        $conn->exec($sql);
+    }
+    
+    // Insere planos padrão se não existirem
+    $conn->exec("
+        INSERT IGNORE INTO plans (name, price, duration_days, images_limit, flyers_limit, description, status) 
+        VALUES 
+        ('Básico', 29.90, 30, 100, 5, 'Plano ideal para pequenos mercados', 'active'),
+        ('Profissional', 59.90, 30, 500, 15, 'Para mercados em crescimento', 'active'),
+        ('Enterprise', 99.90, 30, 2000, 50, 'Para redes de supermercados', 'active')
+    ");
+    
+    // Insere configurações padrão
+    $conn->exec("
+        INSERT IGNORE INTO system_config (config_key, config_value, description) 
+        VALUES 
+        ('site_name', 'FlyerSaaS', 'Nome do sistema'),
+        ('site_logo', '', 'URL do logo'),
+        ('contact_email', '', 'E-mail de contato'),
+        ('maintenance_mode', '0', 'Modo de manutenção (0=desligado, 1=ligado)')
+    ");
+}
 
 ?>
 <!DOCTYPE html>
@@ -327,126 +319,182 @@ $detected_url = rtrim($detected_url, '/');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Instalação - FlyerSaaS</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #f5f5f5; padding-top: 50px; }
-        .installer-box { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .install-card { max-width: 600px; margin: 50px auto; }
         .step-indicator { display: flex; justify-content: space-between; margin-bottom: 30px; }
-        .step { width: 30%; text-align: center; padding: 10px; background: #e9ecef; border-radius: 5px; }
-        .step.active { background: #0d6efd; color: white; }
-        .step.completed { background: #198754; color: white; }
+        .step { width: 30%; text-align: center; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.2); color: white; }
+        .step.active { background: white; color: #667eea; font-weight: bold; }
+        .step.completed { background: #28a745; color: white; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="installer-box">
-            <h2 class="text-center mb-4">🚀 Instalação do FlyerSaaS</h2>
-            
-            <!-- Indicador de Passos -->
-            <div class="step-indicator">
-                <div class="step <?= $step >= 1 ? 'active' : '' ?>">1. Banco de Dados</div>
-                <div class="step <?= $step >= 2 ? ($step > 2 ? 'completed' : 'active') : '' ?>">2. URL Base</div>
-                <div class="step <?= $step >= 3 ? ($step > 3 ? 'completed' : 'active') : '' ?>">3. Administrador</div>
+        <div class="install-card">
+            <div class="card shadow-lg">
+                <div class="card-header bg-white text-center py-4">
+                    <h2 class="mb-0 text-primary">🚀 Instalação do FlyerSaaS</h2>
+                    <p class="text-muted mb-0">Configure seu sistema em 3 passos simples</p>
+                </div>
+                
+                <div class="card-body p-4">
+                    <!-- Indicador de Passos -->
+                    <div class="step-indicator">
+                        <div class="step <?= $step >= 1 ? 'active' : '' ?> <?= $step > 1 ? 'completed' : '' ?>">
+                            1. Banco de Dados
+                        </div>
+                        <div class="step <?= $step >= 2 ? 'active' : '' ?> <?= $step > 2 ? 'completed' : '' ?>">
+                            2. URL do Sistema
+                        </div>
+                        <div class="step <?= $step >= 3 ? 'active' : '' ?>">
+                            3. Administrador
+                        </div>
+                    </div>
+                    
+                    <!-- Mensagens de Erro -->
+                    <?php if (!empty($errors)): ?>
+                        <div class="alert alert-danger alert-dismissible fade show">
+                            <ul class="mb-0">
+                                <?php foreach ($errors as $error): ?>
+                                    <li><?= sanitize($error) ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    <?php endif; ?>
+                    
+                    <!-- Passo 1: Banco de Dados -->
+                    <?php if ($step == 1): ?>
+                        <form method="POST" class="needs-validation" novalidate>
+                            <input type="hidden" name="action" value="test_db">
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Host do MySQL *</label>
+                                <input type="text" class="form-control" name="db_host" value="localhost" required>
+                                <small class="text-muted">Geralmente "localhost" ou endereço do servidor</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Nome do Banco de Dados *</label>
+                                <input type="text" class="form-control" name="db_name" required>
+                                <small class="text-muted">Crie o banco no painel da hospedagem antes</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Usuário do MySQL *</label>
+                                <input type="text" class="form-control" name="db_user" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Senha do MySQL</label>
+                                <input type="password" class="form-control" name="db_pass">
+                                <small class="text-muted">Deixe em branco se não tiver senha</small>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary w-100">
+                                Testar Conexão e Continuar →
+                            </button>
+                        </form>
+                        
+                    <!-- Passo 2: URL Base -->
+                    <?php elseif ($step == 2): ?>
+                        <form method="POST" class="needs-validation" novalidate>
+                            <input type="hidden" name="action" value="save_url">
+                            
+                            <div class="alert alert-success">
+                                ✅ Conexão com banco de dados estabelecida com sucesso!
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">URL Base do Sistema</label>
+                                <?php
+                                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                                $path = dirname($_SERVER['SCRIPT_NAME']);
+                                $detectedUrl = $protocol . '://' . $host . rtrim($path, '/');
+                                ?>
+                                <input type="url" class="form-control" name="base_url" value="<?= $detectedUrl ?>">
+                                <small class="text-muted">URL completa onde o sistema estará acessível</small>
+                            </div>
+                            
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary flex-grow-1">
+                                    Continuar →
+                                </button>
+                                <a href="?step=1" class="btn btn-outline-secondary">Voltar</a>
+                            </div>
+                        </form>
+                        
+                    <!-- Passo 3: Criar Administrador -->
+                    <?php elseif ($step == 3): ?>
+                        <form method="POST" class="needs-validation" novalidate>
+                            <input type="hidden" name="action" value="install">
+                            
+                            <div class="alert alert-info">
+                                <strong>Último passo!</strong> Crie a conta do administrador principal.
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Nome Completo *</label>
+                                <input type="text" class="form-control" name="admin_name" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">E-mail *</label>
+                                <input type="email" class="form-control" name="admin_email" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Senha *</label>
+                                <input type="password" class="form-control" name="admin_password" minlength="6" required>
+                                <small class="text-muted">Mínimo de 6 caracteres</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Confirmar Senha *</label>
+                                <input type="password" class="form-control" name="admin_confirm" required>
+                            </div>
+                            
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-success flex-grow-1">
+                                    🎉 Instalar Sistema
+                                </button>
+                                <a href="?step=2" class="btn btn-outline-secondary">Voltar</a>
+                            </div>
+                        </form>
+                        
+                    <!-- Passo 4: Conclusão -->
+                    <?php elseif ($step == 4): ?>
+                        <div class="text-center py-4">
+                            <div class="display-1 mb-3">🎉</div>
+                            <h3 class="text-success mb-3">Instalação Concluída!</h3>
+                            <p class="text-muted mb-4">
+                                Seu sistema FlyerSaaS está pronto para uso.<br>
+                                Use o e-mail e senha do administrador para acessar.
+                            </p>
+                            
+                            <div class="d-grid gap-2 d-md-block">
+                                <a href="login.php" class="btn btn-primary btn-lg">
+                                    Ir para Login →
+                                </a>
+                            </div>
+                            
+                            <div class="alert alert-warning mt-4 text-start">
+                                <strong>⚠️ Importante:</strong><br>
+                                Por segurança, você pode remover o arquivo <code>install.php</code> após confirmar que tudo está funcionando.
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
             
-            <?php if ($error): ?>
-                <div class="alert alert-danger"><?= nl2br(htmlspecialchars($error)) ?></div>
-            <?php endif; ?>
-            
-            <?php if ($success): ?>
-                <div class="alert alert-success"><?= nl2br(htmlspecialchars($success)) ?></div>
-            <?php endif; ?>
-            
-            <!-- Passo 1: Banco de Dados -->
-            <?php if ($step === 1): ?>
-                <form method="POST">
-                    <input type="hidden" name="action" value="test_db">
-                    <div class="mb-3">
-                        <label class="form-label">Host do Banco de Dados</label>
-                        <input type="text" name="db_host" class="form-control" value="localhost" required>
-                        <small class="text-muted">Geralmente "localhost" na Hostinger</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Nome do Banco de Dados</label>
-                        <input type="text" name="db_name" class="form-control" placeholder="ex: u624766619_encartes" required>
-                        <small class="text-muted">Crie o banco no painel da hospedagem antes</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Usuário do Banco</label>
-                        <input type="text" name="db_user" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Senha do Banco</label>
-                        <input type="password" name="db_pass" class="form-control">
-                        <small class="text-muted">Deixe em branco se não tiver senha</small>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Testar Conexão e Continuar</button>
-                </form>
-                
-            <!-- Passo 2: URL Base -->
-            <?php elseif ($step === 2): ?>
-                <form method="POST">
-                    <input type="hidden" name="action" value="set_url">
-                    <div class="mb-3">
-                        <label class="form-label">URL Base do Sistema</label>
-                        <input type="url" name="base_url" class="form-control" value="<?= htmlspecialchars($detected_url) ?>" required>
-                        <small class="text-muted">Ex: https://seusite.com ou http://localhost/flyersaas</small>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Continuar</button>
-                    <a href="?step=1" class="btn btn-link w-100 mt-2">Voltar</a>
-                </form>
-                
-            <!-- Passo 3: Administrador -->
-            <?php elseif ($step === 3): ?>
-                <form method="POST">
-                    <input type="hidden" name="action" value="install">
-                    <div class="mb-3">
-                        <label class="form-label">Nome do Administrador</label>
-                        <input type="text" name="admin_name" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">E-mail</label>
-                        <input type="email" name="admin_email" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Senha</label>
-                        <input type="password" name="admin_pass" class="form-control" minlength="6" required>
-                        <small class="text-muted">Mínimo 6 caracteres</small>
-                    </div>
-                    <div class="alert alert-info">
-                        <strong>Importante:</strong> O banco de dados deve existir no painel da hospedagem.<br>
-                        O instalador criará todas as tabelas automaticamente.
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">Finalizar Instalação</button>
-                    <a href="?step=2" class="btn btn-link w-100 mt-2">Voltar</a>
-                </form>
-                
-            <!-- Passo 4: Conclusão -->
-            <?php elseif ($step === 4): ?>
-                <div class="text-center">
-                    <div class="mb-4">
-                        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#198754" stroke-width="2">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                    </div>
-                    <h4>Instalação Concluída!</h4>
-                    <p class="text-muted">O sistema está pronto para uso.</p>
-                    <div class="mt-4">
-                        <a href="index.php" class="btn btn-primary">Acessar Sistema</a>
-                        <a href="admin/index.php" class="btn btn-secondary">Painel Admin</a>
-                    </div>
-                    <div class="alert alert-warning mt-4">
-                        <strong>Atenção:</strong> Por segurança, remova ou renomeie o arquivo <code>install.php</code> após a instalação.
-                    </div>
-                </div>
-                <script>
-                    setTimeout(() => { window.location.href = 'index.php'; }, 3000);
-                </script>
-            <?php endif; ?>
-            
+            <div class="text-center text-white mt-3">
+                <small>FlyerSaaS v1.0 - Sistema de Encartes Digitais</small>
+            </div>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
