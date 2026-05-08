@@ -12,6 +12,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // Define o caminho base do projeto
 define('BASE_PATH', dirname(__DIR__));
+define('ROOT_PATH', dirname(__DIR__));
 
 // Caminho do arquivo .env
 $envFile = BASE_PATH . '/.env';
@@ -293,5 +294,176 @@ function debug($data) {
         echo '<pre>';
         var_dump($data);
         echo '</pre>';
+    }
+}
+
+/**
+ * Obtém uma configuração do banco de dados
+ * 
+ * @param string $key Chave da configuração
+ * @param mixed $default Valor padrão caso não exista
+ * @return mixed Valor da configuração ou default
+ */
+function getSetting($key, $default = null) {
+    static $settingsCache = [];
+    
+    // Carrega configurações na primeira chamada
+    if (empty($settingsCache)) {
+        $db = getDB();
+        if ($db) {
+            try {
+                $stmt = $db->query("SELECT `key`, `value` FROM settings");
+                while ($row = $stmt->fetch()) {
+                    $settingsCache[$row['key']] = $row['value'];
+                }
+            } catch (PDOException $e) {
+                // Tabela não existe ainda
+            }
+        }
+    }
+    
+    return isset($settingsCache[$key]) ? $settingsCache[$key] : $default;
+}
+
+/**
+ * Atualiza uma configuração no banco de dados
+ * 
+ * @param string $key Chave da configuração
+ * @param mixed $value Valor a ser salvo
+ * @return bool True se sucesso, false se falhou
+ */
+function updateSetting($key, $value) {
+    $db = getDB();
+    if (!$db) return false;
+    
+    try {
+        $stmt = $db->prepare("
+            INSERT INTO settings (`key`, `value`, updated_at) 
+            VALUES (:key, :value, NOW())
+            ON DUPLICATE KEY UPDATE `value` = :value, updated_at = NOW()
+        ");
+        $stmt->bindValue(':key', $key, PDO::PARAM_STR);
+        $stmt->bindValue(':value', $value, PDO::PARAM_STR);
+        return $stmt->execute();
+    } catch (PDOException $e) {
+        error_log("Erro ao atualizar setting $key: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Recarrega as configurações do cache
+ * 
+ * @return void
+ */
+function refreshSettings() {
+    global $settingsCache;
+    $settingsCache = [];
+    getSetting(''); // Força recarregamento
+}
+
+/**
+ * Obtém o tema do usuário logado ou o tema padrão do sistema
+ * 
+ * @return string 'light' ou 'dark'
+ */
+function getUserTheme() {
+    if (isLoggedIn() && isset($_SESSION['user_theme'])) {
+        return $_SESSION['user_theme'];
+    }
+    return getSetting('default_theme', 'light');
+}
+
+/**
+ * Faz upload de um arquivo com validação
+ * 
+ * @param array $file Array $_FILES['arquivo']
+ * @param string $uploadDir Diretório de destino
+ * @param array $allowedTypes Tipos MIME permitidos
+ * @param int $maxSize Tamanho máximo em bytes
+ * @return array ['success' => bool, 'filename' => string|null, 'error' => string|null]
+ */
+function uploadFile($file, $uploadDir, $allowedTypes = ['image/jpeg', 'image/png', 'image/gif'], $maxSize = 2097152) {
+    // Cria diretório se não existir
+    if (!is_dir($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+    
+    // Valida erro no upload
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return [
+            'success' => false,
+            'filename' => null,
+            'error' => 'Erro no upload. Código: ' . $file['error']
+        ];
+    }
+    
+    // Valida tamanho
+    if ($file['size'] > $maxSize) {
+        return [
+            'success' => false,
+            'filename' => null,
+            'error' => 'Arquivo muito grande. Máximo: ' . round($maxSize / 1048576, 2) . 'MB'
+        ];
+    }
+    
+    // Valida tipo MIME
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+    
+    if (!in_array($mimeType, $allowedTypes)) {
+        return [
+            'success' => false,
+            'filename' => null,
+            'error' => 'Tipo de arquivo não permitido: ' . $mimeType
+        ];
+    }
+    
+    // Gera nome único
+    $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $newName = uniqid() . '_' . time() . '.' . $extension;
+    $destination = $uploadDir . '/' . $newName;
+    
+    // Move arquivo
+    if (move_uploaded_file($file['tmp_name'], $destination)) {
+        return [
+            'success' => true,
+            'filename' => $newName,
+            'error' => null
+        ];
+    }
+    
+    return [
+        'success' => false,
+        'filename' => null,
+        'error' => 'Falha ao mover arquivo'
+    ];
+}
+
+/**
+ * Registra sessão de login do usuário
+ * 
+ * @param int $userId ID do usuário
+ * @return void
+ */
+function registerUserSession($userId) {
+    $db = getDB();
+    if (!$db) return;
+    
+    try {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        
+        $stmt = $db->prepare("
+            INSERT INTO user_sessions (user_id, ip, user_agent, created_at)
+            VALUES (:user_id, :ip, :user_agent, NOW())
+        ");
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':ip', $ip, PDO::PARAM_STR);
+        $stmt->bindValue(':user_agent', $userAgent, PDO::PARAM_STR);
+        $stmt->execute();
+    } catch (PDOException $e) {
+        // Ignora se tabela não existir
     }
 }
