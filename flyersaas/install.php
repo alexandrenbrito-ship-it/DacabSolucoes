@@ -11,38 +11,10 @@ header('Expires: 0');
 
 session_start();
 
-// Se já estiver instalado, redirecionar
-if (file_exists(__DIR__ . '/.env')) {
-    $envContent = file_get_contents(__DIR__ . '/.env');
-    if (strpos($envContent, 'INSTALLED=true') !== false) {
-        // Verificar se as tabelas existem usando conexão direta
-        $env = parse_ini_file(__DIR__ . '/.env');
-        if ($env !== false && isset($env['DB_HOST'], $env['DB_NAME'], $env['DB_USER'])) {
-            try {
-                $dsn = "mysql:host=" . $env['DB_HOST'] . ";dbname=" . $env['DB_NAME'] . ";charset=utf8mb4";
-                $pdo = new PDO($dsn, $env['DB_USER'], $env['DB_PASS'] ?? '');
-                $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-                
-                $tables = ['users', 'plans', 'user_subscriptions', 'gallery_images', 'flyers', 'flyer_items', 'system_config', 'migrations'];
-                $missingTables = [];
-                
-                foreach ($tables as $table) {
-                    $stmt = $pdo->query("SHOW TABLES LIKE '$table'");
-                    if ($stmt->rowCount() === 0) {
-                        $missingTables[] = $table;
-                    }
-                }
-                
-                if (empty($missingTables)) {
-                    header('Location: index.php');
-                    exit;
-                }
-            } catch (Exception $e) {
-                // Continuar com instalação se houver erro
-            }
-        }
-    }
-}
+// NOTA IMPORTANTE: Não redirecionamos mesmo se já estiver instalado
+// Isso permite re-instalar se as tabelas foram perdidas ou corrompidas
+// A verificação de instalação é feita pelo config.php em todas as outras páginas
+
 
 $errors = [];
 $success = '';
