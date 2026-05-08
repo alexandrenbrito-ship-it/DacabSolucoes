@@ -145,6 +145,20 @@ composer require mpdf/mpdf
 
 Se não usar Composer, o sistema tentará usar métodos alternativos ou exibirá mensagem de erro ao tentar baixar PDFs.
 
+## ⏰ Configuração do Cron Job
+
+Para notificações automáticas de vencimento de assinaturas, configure o cron job:
+
+```bash
+# Edite o crontab
+crontab -e
+
+# Adicione a linha abaixo (ajuste o caminho):
+0 8 * * * php /caminho/para/saas-encartes/cron/notify-expiring.php >> /var/log/encartepro-cron.log 2>&1
+```
+
+Isso executará diariamente às 8:00 AM para verificar assinaturas que vencerão em X dias (configurável no admin).
+
 ## 🔧 Estrutura de Arquivos
 
 ```
@@ -159,29 +173,40 @@ Se não usar Composer, o sistema tentará usar métodos alternativos ou exibirá
 │   ├── forgot-password.php
 │   └── reset-password.php
 ├── /admin/                # Painel administrativo
-│   ├── index.php
-│   ├── users.php
-│   ├── plans.php
-│   └── subscriptions.php
+│   ├── index.php          # Dashboard admin
+│   ├── users.php          # Gestão de usuários
+│   ├── plans.php          # Gestão de planos
+│   ├── subscriptions.php  # Gestão de assinaturas
+│   ├── settings.php       # Configurações do sistema (5 abas)
+│   └── templates.php      # CRUD de templates de encartes
 ├── /dashboard/            # Painel do usuário
-│   ├── index.php
-│   ├── editor.php
-│   ├── my-encartes.php
-│   └── download.php
+│   ├── index.php          # Dashboard usuário
+│   ├── editor.php         # Editor de encartes
+│   ├── my-encartes.php    # Meus encartes
+│   ├── download.php       # Download de PDF
+│   └── profile.php        # Perfil do usuário (3 abas)
 ├── /webhooks/             # Webhooks externos
-│   └── mercadopago.php
+│   └── mercadopago.php    # Webhook do Mercado Pago
 ├── /emails/               # Templates de email
-│   ├── welcome.php
-│   ├── reset-password.php
-│   └── subscription-confirmed.php
+│   ├── welcome.php                  # Boas-vindas
+│   ├── reset-password.php           # Redefinição de senha
+│   ├── subscription-confirmed.php   # Assinatura confirmada
+│   ├── subscription-expiring.php    # Assinatura expirando (NOVO)
+│   └── new-user-admin.php           # Notificação admin (NOVO)
+├── /cron/                 # Scripts cron
+│   ├── notify-expiring.php # Notifica vencimentos (NOVO)
+│   └── logs/              # Logs dos cron jobs
 ├── /includes/             # Bibliotecas e utilitários
-│   ├── config.php
-│   ├── mail.php
-│   ├── mercadopago.php
-│   ├── pdf.php
-│   ├── header.php
-│   └── footer.php
+│   ├── config.php         # Configuração central + funções helper
+│   ├── mail.php           # Envio de emails
+│   ├── mercadopago.php    # Integração MP
+│   ├── pdf.php            # Geração de PDFs
+│   ├── header.php         # Cabeçalho comum
+│   └── footer.php         # Rodapé comum
 └── /uploads/              # Arquivos gerados
+    ├── /logos/            # Logos e favicon
+    ├── /avatars/          # Avatares de usuários
+    ├── /templates/        # Miniaturas de templates
     └── /pdfs/             # PDFs dos encartes
 ```
 
@@ -192,10 +217,22 @@ O sistema já inclui 3 planos pré-configurados:
 | Plano | Preço | Encartes | Recursos |
 |-------|-------|----------|----------|
 | Starter | R$ 29,90/mês | 10 | Templates básicos, suporte email |
-| Pro | R$ 59,90/mês | 50 | Todos templates, suporte prioritário |
-| Enterprise | R$ 149,90/mês | Ilimitado | API, white label, suporte 24/7 |
+| Pro | R$ 59,90/mês | 50 | Todos templates, logo personalizada, suporte prioritário |
+| Enterprise | R$ 149,90/mês | Ilimitado | API, white label, gerente dedicado |
 
 Novos usuários recebem automaticamente 7 dias de trial no plano Starter.
+
+## 🎨 Templates de Encartes
+
+O sistema inclui 3 templates padrão que podem ser customizados pelo admin:
+
+| Template | Descrição | Estilo |
+|----------|-----------|--------|
+| Oferta da Semana | Clássico para mercados e feiras | Grid 3 colunas, badge circular |
+| Promoção Relâmpago | Fundo escuro com destaque em preços | Grid 4 colunas, badge ribbon |
+| Cardápio Digital | Layout limpo para restaurantes | Lista 2 colunas, badge quadrado |
+
+Admins podem criar novos templates em `/admin/templates.php` com personalização completa de cores, fontes, layout e CSS customizado.
 
 ## 🔐 Acessos
 

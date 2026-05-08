@@ -1,33 +1,32 @@
 ```
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-
-# Dependencies
-node_modules/
-vendor/
-composer.lock
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-
-# Environment
+# Environment variables
 .env
 .env.local
 *.env.*
 
-# Editors
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+
+# Dependencies
+vendor/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.phar
+
+# IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS generated files
 .DS_Store
 Thumbs.db
-
-# Backup and swap files
-*~
-*.bak
-*.backup
 ```

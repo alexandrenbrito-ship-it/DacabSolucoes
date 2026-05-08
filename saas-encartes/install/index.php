@@ -153,11 +153,18 @@ function createTables($pdo) {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            email VARCHAR(255) NOT NULL UNIQUE,
+            name VARCHAR(150) NOT NULL,
+            email VARCHAR(200) NOT NULL UNIQUE,
             password VARCHAR(255) NOT NULL,
-            role ENUM('admin', 'user') DEFAULT 'user',
-            status ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
+            role ENUM('admin','user') DEFAULT 'user',
+            status ENUM('active','inactive','suspended') DEFAULT 'active',
+            avatar VARCHAR(255) DEFAULT NULL,
+            phone VARCHAR(30) DEFAULT NULL,
+            document VARCHAR(30) DEFAULT NULL,
+            address TEXT DEFAULT NULL,
+            theme ENUM('light','dark') DEFAULT 'light',
+            notification_email TINYINT DEFAULT 1,
+            notification_expiry TINYINT DEFAULT 1,
             email_verified TINYINT DEFAULT 0,
             verification_token VARCHAR(100),
             reset_token VARCHAR(100),
@@ -175,12 +182,12 @@ function createTables($pdo) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
             description TEXT,
-            price DECIMAL(10,2) NOT NULL,
-            billing_cycle ENUM('monthly', 'yearly', 'lifetime') DEFAULT 'monthly',
+            price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            billing_cycle ENUM('monthly','yearly','lifetime') DEFAULT 'monthly',
             features JSON,
-            max_encartes INT DEFAULT 0,
+            max_encartes INT DEFAULT 10,
             mp_plan_id VARCHAR(100),
-            status ENUM('active', 'inactive') DEFAULT 'active',
+            status ENUM('active','inactive') DEFAULT 'active',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_status (status),
             INDEX idx_billing_cycle (billing_cycle)
@@ -193,8 +200,8 @@ function createTables($pdo) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id INT NOT NULL,
             plan_id INT NOT NULL,
-            status ENUM('active', 'expired', 'cancelled', 'trial') DEFAULT 'trial',
-            starts_at DATE,
+            status ENUM('active','expired','cancelled','trial') DEFAULT 'trial',
+            starts_at DATE NOT NULL,
             expires_at DATE,
             mp_payment_id VARCHAR(100),
             mp_subscription_id VARCHAR(100),
@@ -209,20 +216,54 @@ function createTables($pdo) {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
     
+    // Tabela templates
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS templates (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(150) NOT NULL,
+            description TEXT,
+            thumbnail VARCHAR(255),
+            header_bg_color VARCHAR(10) DEFAULT '#e8401c',
+            header_text_color VARCHAR(10) DEFAULT '#ffffff',
+            body_bg_color VARCHAR(10) DEFAULT '#ffffff',
+            footer_bg_color VARCHAR(10) DEFAULT '#f5a623',
+            footer_text_color VARCHAR(10) DEFAULT '#ffffff',
+            primary_font VARCHAR(100) DEFAULT 'Syne',
+            product_cols INT DEFAULT 3,
+            show_old_price TINYINT DEFAULT 1,
+            show_product_image TINYINT DEFAULT 1,
+            badge_style ENUM('circle','square','ribbon','none') DEFAULT 'circle',
+            layout_style ENUM('grid','list','magazine') DEFAULT 'grid',
+            custom_css TEXT,
+            status ENUM('active','inactive') DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    
     // Tabela encartes
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS encartes (
             id INT AUTO_INCREMENT PRIMARY KEY,
             user_id INT NOT NULL,
+            template_id INT NOT NULL,
             title VARCHAR(200) NOT NULL,
-            template_id VARCHAR(50) NOT NULL,
-            data JSON,
-            preview_url VARCHAR(255),
+            store_name VARCHAR(150),
+            store_logo VARCHAR(255),
+            store_phone VARCHAR(50),
+            store_address TEXT,
+            header_text VARCHAR(200),
+            header_subtitle VARCHAR(200),
+            validity_text VARCHAR(150),
+            footer_text TEXT,
+            products JSON,
+            custom_colors JSON,
+            status ENUM('draft','published') DEFAULT 'draft',
             pdf_url VARCHAR(255),
-            status ENUM('draft', 'published') DEFAULT 'draft',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE,
             INDEX idx_user_id (user_id),
             INDEX idx_status (status)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -232,22 +273,64 @@ function createTables($pdo) {
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS settings (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            key_name VARCHAR(100) NOT NULL UNIQUE,
-            value TEXT,
+            `key` VARCHAR(100) NOT NULL UNIQUE,
+            `value` TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_key (key_name)
+            INDEX idx_key (`key`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    
+    // Tabela user_sessions
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            ip VARCHAR(50),
+            user_agent TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            INDEX idx_user_id (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
     
     // Insere planos padrão
     $pdo->exec("
-        INSERT INTO plans (name, description, price, billing_cycle, features, max_encartes, status) VALUES
-        ('Starter', 'Perfeito para pequenos negócios', 29.90, 'monthly', 
-         '[\"10 encartes por mês\", \"Templates básicos\", \"Suporte por email\", \"Exportação em PDF\"]', 10, 'active'),
-        ('Pro', 'Ideal para negócios em crescimento', 59.90, 'monthly',
-         '[\"50 encartes por mês\", \"Todos os templates\", \"Suporte prioritário\", \"Exportação em PDF\", \"Sem marca d\\'água\"]', 50, 'active'),
-        ('Enterprise', 'Para grandes volumes', 149.90, 'monthly',
-         '[\"Encartes ilimitados\", \"Todos os templates\", \"Suporte 24/7\", \"Exportação em PDF\", \"API de integração\", \"White label\"]', 0, 'active')
+        INSERT INTO plans (name, description, price, billing_cycle, max_encartes, features, status) VALUES
+        ('Starter','Ideal para começar',29.90,'monthly',10,'[\"10 encartes/mês\",\"Templates básicos\",\"Suporte por email\"]','active'),
+        ('Pro','Para pequenas empresas',59.90,'monthly',50,'[\"50 encartes/mês\",\"Todos os templates\",\"Logo personalizada\",\"Suporte prioritário\"]','active'),
+        ('Enterprise','Sem limites',149.90,'monthly',9999,'[\"Encartes ilimitados\",\"White-label\",\"API access\",\"Gerente dedicado\"]','active')
+    ");
+    
+    // Insere templates padrão
+    $pdo->exec("
+        INSERT INTO templates (name, description, header_bg_color, body_bg_color, footer_bg_color, product_cols, layout_style, badge_style, status) VALUES
+        ('Oferta da Semana','Template clássico para mercados e feiras','#e8401c','#ffffff','#f5a623',3,'grid','circle','active'),
+        ('Promoção Relâmpago','Fundo escuro com destaque em preços','#1a1a2e','#16213e','#e94560',4,'grid','ribbon','active'),
+        ('Cardápio Digital','Layout limpo para restaurantes e lanchonetes','#2d6a4f','#ffffff','#40916c',2,'list','square','active')
+    ");
+    
+    // Insere settings padrão
+    $pdo->exec("
+        INSERT INTO settings (`key`, `value`) VALUES
+        ('site_name','EncartePro'),
+        ('site_description','Crie encartes digitais incríveis'),
+        ('primary_color','#e8401c'),
+        ('secondary_color','#f5a623'),
+        ('default_theme','light'),
+        ('allow_register','1'),
+        ('maintenance_mode','0'),
+        ('smtp_host',''),
+        ('smtp_port','587'),
+        ('smtp_user',''),
+        ('smtp_pass',''),
+        ('smtp_from',''),
+        ('smtp_from_name','EncartePro'),
+        ('mp_access_token',''),
+        ('mp_public_key',''),
+        ('mp_environment','sandbox'),
+        ('notify_expiry_days','7'),
+        ('admin_notify_new_user','1'),
+        ('admin_notify_new_payment','1')
     ");
 }
 
