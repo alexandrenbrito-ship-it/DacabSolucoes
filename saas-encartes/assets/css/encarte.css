@@ -1,0 +1,412 @@
+/**
+ * EncartePro - CSS Base para Encartes
+ * Estilos compartilhados para todos os templates de encartes
+ * Prefixo .encarte para isolar estilos e não vazar para o restante da página
+ */
+
+/* ========================================
+   RESET E BASE
+   ======================================== */
+.encarte {
+    width: 794px; /* A4 width em 96dpi */
+    min-height: 1123px; /* A4 height em 96dpi */
+    background: var(--body-bg, #ffffff);
+    position: relative;
+    overflow: hidden;
+    font-family: var(--secondary-font, 'DM Sans', sans-serif);
+    color: var(--body-text, #222222);
+    margin: 0 auto;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+.encarte * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* ========================================
+   CABEÇALHO
+   ======================================== */
+.encarte-header {
+    background: var(--header-bg, #e8401c);
+    color: var(--header-text, #ffffff);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+/* Layouts do cabeçalho */
+.header-logo-left {
+    flex-direction: row;
+    justify-content: flex-start;
+}
+
+.header-logo-center {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.header-logo-right {
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+}
+
+/* Alturas do cabeçalho */
+.header-small {
+    padding: 12px 20px;
+}
+
+.header-small .store-name {
+    font-size: 1.2em;
+}
+
+.header-small .promo-title {
+    font-size: 1em;
+}
+
+.header-medium {
+    padding: 20px 24px;
+}
+
+.header-large {
+    padding: 32px 24px;
+}
+
+.header-large .store-name {
+    font-size: 2em;
+}
+
+.header-large .promo-title {
+    font-size: 1.5em;
+}
+
+/* Elementos do cabeçalho */
+.store-logo {
+    max-height: 80px;
+    max-width: 200px;
+    object-fit: contain;
+}
+
+.header-logo-center .store-logo {
+    margin-bottom: 15px;
+}
+
+.header-texts {
+    flex: 1;
+}
+
+.store-name {
+    font-family: var(--primary-font, 'Syne', sans-serif);
+    font-weight: 700;
+    font-size: 1.5em;
+    line-height: 1.2;
+    margin: 0;
+}
+
+.promo-title {
+    font-family: var(--primary-font, 'Syne', sans-serif);
+    font-weight: 700;
+    font-size: 1.2em;
+    margin-top: 5px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.promo-subtitle {
+    font-size: 0.9em;
+    opacity: 0.9;
+    margin-top: 5px;
+    font-weight: 400;
+}
+
+.header-phone {
+    font-size: 0.9em;
+    white-space: nowrap;
+    opacity: 0.95;
+}
+
+/* ========================================
+   ÁREA DE PRODUTOS
+   ======================================== */
+.encarte-body {
+    padding: 20px;
+}
+
+/* Layout Grid (padrão) */
+.layout-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.cols-desktop-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.cols-desktop-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.cols-desktop-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+/* Layout Lista */
+.layout-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.layout-list .product-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    text-align: left;
+}
+
+.layout-list .product-image,
+.layout-list .product-image-placeholder {
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+}
+
+.layout-list .product-info {
+    flex: 1;
+}
+
+/* Layout Magazine (destaque + grade) */
+.layout-magazine {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.layout-magazine .product-card:first-child {
+    grid-column: span 2;
+    grid-row: span 2;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.layout-magazine .product-card:first-child .product-image,
+.layout-magazine .product-card:first-child .product-image-placeholder {
+    max-height: 200px;
+    width: 100%;
+    object-fit: cover;
+}
+
+/* ========================================
+   CARD DO PRODUTO
+   ======================================== */
+.product-card {
+    background: var(--product-card-bg, #f9f9f9);
+    border: 1px solid var(--product-card-border, #eeeeee);
+    border-radius: var(--product-card-radius, 8px);
+    padding: 12px;
+    text-align: center;
+    transition: transform 0.2s ease;
+    overflow: hidden;
+}
+
+.product-card.featured {
+    border: 2px solid var(--header-bg, #e8401c);
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.product-image {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+    border-radius: calc(var(--product-card-radius, 8px) - 2px);
+    margin-bottom: 10px;
+    background: #f5f5f5;
+}
+
+.product-image-placeholder {
+    width: 100%;
+    height: 100px;
+    background: linear-gradient(135deg, #f0f0f0 25%, #e5e5e5 50%, #f0f0f0 75%);
+    border-radius: calc(var(--product-card-radius, 8px) - 2px);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ccc;
+    font-size: 2em;
+}
+
+.product-name {
+    font-family: var(--secondary-font, 'DM Sans', sans-serif);
+    font-size: 0.9em;
+    font-weight: 600;
+    color: var(--product-name-color, #222222);
+    margin: 8px 0 4px;
+    line-height: 1.3;
+    min-height: 2.6em;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.product-old-price {
+    text-decoration: line-through;
+    color: var(--product-old-price-color, #999999);
+    font-size: 0.75em;
+    margin: 4px 0;
+    font-weight: 400;
+}
+
+.product-price-plain {
+    font-family: var(--primary-font, 'Syne', sans-serif);
+    font-weight: 700;
+    font-size: 1.3em;
+    color: var(--product-price-color, #e8401c);
+    margin-top: 6px;
+}
+
+/* ========================================
+   BADGES DE PREÇO
+   ======================================== */
+.badge {
+    background: var(--badge-bg, #e8401c);
+    color: var(--badge-text, #ffffff);
+    font-weight: 700;
+    font-size: 1em;
+    display: inline-block;
+    margin-top: 6px;
+    font-family: var(--primary-font, 'Syne', sans-serif);
+}
+
+/* Badge Círculo */
+.badge-circle {
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85em;
+    line-height: 1;
+    padding: 0;
+}
+
+/* Badge Quadrado */
+.badge-square {
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+
+/* Badge Faixa/Ribbon */
+.badge-ribbon {
+    width: calc(100% + 24px);
+    margin: 8px -12px -12px;
+    padding: 6px 0;
+    border-radius: 0;
+    font-size: 0.9em;
+}
+
+/* Sem Badge */
+.badge-none {
+    background: none;
+    color: var(--product-price-color, #e8401c);
+    font-size: 1.3em;
+    padding: 0;
+    margin-top: 6px;
+}
+
+/* ========================================
+   RODAPÉ
+   ======================================== */
+.encarte-footer {
+    background: var(--footer-bg, #f5a623);
+    color: var(--footer-text, #ffffff);
+    padding: 15px 24px;
+    font-size: 0.85em;
+    text-align: center;
+}
+
+.encarte-footer p {
+    margin: 6px 0;
+    line-height: 1.4;
+}
+
+.encarte-footer p:last-child {
+    margin-bottom: 0;
+}
+
+/* ========================================
+   RESPONSIVIDADE (para preview no editor)
+   ======================================== */
+@media (max-width: 850px) {
+    .encarte {
+        width: 100%;
+        min-height: auto;
+    }
+    
+    .cols-desktop-2,
+    .cols-desktop-3,
+    .cols-desktop-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .layout-magazine {
+        grid-template-columns: 1fr;
+    }
+    
+    .layout-magazine .product-card:first-child {
+        grid-column: auto;
+        grid-row: auto;
+    }
+}
+
+@media (max-width: 500px) {
+    .cols-desktop-2,
+    .cols-desktop-3,
+    .cols-desktop-4 {
+        grid-template-columns: 1fr;
+    }
+    
+    .layout-list .product-card {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .layout-list .product-image,
+    .layout-list .product-image-placeholder {
+        width: 100%;
+        height: 120px;
+    }
+    
+    .header-logo-left,
+    .header-logo-right {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .header-phone {
+        margin-top: 10px;
+    }
+}
+
+/* ========================================
+   IMPRESSÃO
+   ======================================== */
+@media print {
+    .encarte {
+        box-shadow: none;
+        margin: 0;
+        page-break-inside: avoid;
+    }
+    
+    body {
+        margin: 0;
+        padding: 0;
+    }
+}

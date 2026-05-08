@@ -5,6 +5,7 @@
  */
 
 require_once '../includes/config.php';
+require_once '../includes/render-template.php';
 
 if (!isAdmin()) {
     redirect('/auth/login.php');
@@ -14,8 +15,113 @@ $pdo = getDB();
 $action = $_GET['action'] ?? 'list';
 $templateId = $_GET['id'] ?? null;
 
-// Processa ações
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Processa ações AJAX
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
+    header('Content-Type: application/json');
+    
+    if (!validateCSRFToken($_POST['csrf_token'] ?? '')) {
+        echo json_encode(['success' => false, 'message' => 'Token CSRF inválido']);
+        exit;
+    }
+    
+    $postAction = $_POST['action'] ?? '';
+    
+    try {
+        if ($postAction === 'toggle_status') {
+            $stmt = $pdo->prepare("UPDATE templates SET status = CASE WHEN status = 'active' THEN 'inactive' ELSE 'active' END WHERE id = ?");
+            $stmt->execute([$_POST['id']]);
+            echo json_encode(['success' => true]);
+        } elseif ($postAction === 'update_sort') {
+            foreach ($_POST['order'] as $index => $id) {
+                $stmt = $pdo->prepare("UPDATE templates SET sort_order = ? WHERE id = ?");
+                $stmt->execute([$index, $id]);
+            }
+            echo json_encode(['success' => true]);
+        } elseif ($postAction === 'delete') {
+            // Verifica se tem encartes vinculados
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM encartes WHERE template_id = ?");
+            $stmt->execute([$_POST['id']]);
+            $count = $stmt->fetchColumn();
+            
+            if ($count > 0) {
+                echo json_encode(['success' => false, 'message' => "Não é possível excluir. Este template possui {$count} encarte(s) vinculado(s)."]);
+                exit;
+            }
+            
+            $stmt = $pdo->prepare("DELETE FROM templates WHERE id = ?");
+            $stmt->execute([$_POST['id']]);
+            echo json_encode(['success' => true, 'message' => 'Template excluído!']);
+        } elseif ($postAction === 'duplicate') {
+            $stmt = $pdo->prepare("SELECT * FROM templates WHERE id = ?");
+            $stmt->execute([$_POST['id']]);
+            $template = $stmt->fetch();
+            
+            if ($template) {
+                $sql = "INSERT INTO templates (name, description, thumbnail, header_bg_color, header_text_color, 
+                        body_bg_color, body_text_color, footer_bg_color, footer_text_color, primary_font, secondary_font,
+                        header_show_logo, header_show_phone, header_layout, header_height,
+                        product_cols_mobile, product_cols_desktop, product_card_bg, product_card_border, product_card_radius,
+                        product_name_color, product_price_color, product_old_price_color, show_old_price, show_product_image,
+                        badge_style, badge_bg_color, badge_text_color, layout_style, title_size,
+                        footer_show_address, footer_show_phone, footer_show_whatsapp, footer_show_website, footer_show_social,
+                        custom_css, custom_html_header, custom_html_footer, is_featured, plan_restriction, status, created_by) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    'Cópia de ' . $template['name'],
+                    $template['description'],
+                    $template['thumbnail'],
+                    $template['header_bg_color'],
+                    $template['header_text_color'],
+                    $template['body_bg_color'],
+                    $template['body_text_color'],
+                    $template['footer_bg_color'],
+                    $template['footer_text_color'],
+                    $template['primary_font'],
+                    $template['secondary_font'],
+                    $template['header_show_logo'],
+                    $template['header_show_phone'],
+                    $template['header_layout'],
+                    $template['header_height'],
+                    $template['product_cols_mobile'],
+                    $template['product_cols_desktop'],
+                    $template['product_card_bg'],
+                    $template['product_card_border'],
+                    $template['product_card_radius'],
+                    $template['product_name_color'],
+                    $template['product_price_color'],
+                    $template['product_old_price_color'],
+                    $template['show_old_price'],
+                    $template['show_product_image'],
+                    $template['badge_style'],
+                    $template['badge_bg_color'],
+                    $template['badge_text_color'],
+                    $template['layout_style'],
+                    $template['title_size'],
+                    $template['footer_show_address'],
+                    $template['footer_show_phone'],
+                    $template['footer_show_whatsapp'],
+                    $template['footer_show_website'],
+                    $template['footer_show_social'],
+                    $template['custom_css'],
+                    $template['custom_html_header'],
+                    $template['custom_html_footer'],
+                    0, // is_featured = 0 na cópia
+                    $template['plan_restriction'],
+                    'inactive', // status inativo na cópia
+                    $_SESSION['user_id'] ?? null
+                ]);
+                echo json_encode(['success' => true, 'message' => 'Template duplicado!', 'new_id' => $pdo->lastInsertId()]);
+            }
+        }
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Erro: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+// Processa formulário de salvar
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_SERVER['HTTP_X_REQUESTED_WITH'])) {
     header('Content-Type: application/json');
     
     if (!validateCSRFToken($_POST['csrf_token'] ?? '')) {
@@ -32,90 +138,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'description' => sanitize($_POST['description']),
                 'header_bg_color' => sanitize($_POST['header_bg_color']),
                 'header_text_color' => sanitize($_POST['header_text_color']),
+                'header_show_logo' => isset($_POST['header_show_logo']) ? 1 : 0,
+                'header_show_phone' => isset($_POST['header_show_phone']) ? 1 : 0,
+                'header_layout' => sanitize($_POST['header_layout']),
+                'header_height' => sanitize($_POST['header_height']),
                 'body_bg_color' => sanitize($_POST['body_bg_color']),
-                'footer_bg_color' => sanitize($_POST['footer_bg_color']),
-                'footer_text_color' => sanitize($_POST['footer_text_color']),
-                'primary_font' => sanitize($_POST['primary_font']),
-                'product_cols' => (int) $_POST['product_cols'],
+                'body_text_color' => sanitize($_POST['body_text_color']),
+                'product_cols_mobile' => (int) ($_POST['product_cols_mobile'] ?? 2),
+                'product_cols_desktop' => (int) ($_POST['product_cols_desktop'] ?? 3),
+                'product_card_bg' => sanitize($_POST['product_card_bg']),
+                'product_card_border' => sanitize($_POST['product_card_border']),
+                'product_card_radius' => (int) ($_POST['product_card_radius'] ?? 8),
+                'product_name_color' => sanitize($_POST['product_name_color']),
+                'product_price_color' => sanitize($_POST['product_price_color']),
+                'product_old_price_color' => sanitize($_POST['product_old_price_color']),
                 'show_old_price' => isset($_POST['show_old_price']) ? 1 : 0,
                 'show_product_image' => isset($_POST['show_product_image']) ? 1 : 0,
                 'badge_style' => sanitize($_POST['badge_style']),
+                'badge_bg_color' => sanitize($_POST['badge_bg_color']),
+                'badge_text_color' => sanitize($_POST['badge_text_color']),
                 'layout_style' => sanitize($_POST['layout_style']),
-                'custom_css' => $_POST['custom_css'],
+                'primary_font' => sanitize($_POST['primary_font']),
+                'secondary_font' => sanitize($_POST['secondary_font']),
+                'title_size' => sanitize($_POST['title_size']),
+                'footer_bg_color' => sanitize($_POST['footer_bg_color']),
+                'footer_text_color' => sanitize($_POST['footer_text_color']),
+                'footer_show_address' => isset($_POST['footer_show_address']) ? 1 : 0,
+                'footer_show_phone' => isset($_POST['footer_show_phone']) ? 1 : 0,
+                'footer_show_whatsapp' => isset($_POST['footer_show_whatsapp']) ? 1 : 0,
+                'footer_show_website' => isset($_POST['footer_show_website']) ? 1 : 0,
+                'footer_show_social' => isset($_POST['footer_show_social']) ? 1 : 0,
+                'custom_css' => $_POST['custom_css'] ?? '',
+                'custom_html_header' => $_POST['custom_html_header'] ?? '',
+                'custom_html_footer' => $_POST['custom_html_footer'] ?? '',
+                'is_featured' => isset($_POST['is_featured']) ? 1 : 0,
+                'sort_order' => (int) ($_POST['sort_order'] ?? 0),
+                'plan_restriction' => sanitize($_POST['plan_restriction']),
                 'status' => sanitize($_POST['status']),
+                'created_by' => $_SESSION['user_id'] ?? null,
             ];
             
-            // Upload de thumbnail
-            if (isset($_FILES['thumbnail']) && $_FILES['thumbnail']['error'] === UPLOAD_ERR_OK) {
-                $uploadResult = uploadFile($_FILES['thumbnail'], ROOT_PATH . '/uploads/templates', ['image/jpeg', 'image/png', 'image/gif'], 2097152);
-                if ($uploadResult['success']) {
-                    $data['thumbnail'] = $uploadResult['filename'];
-                }
-            }
-            
             if ($postAction === 'create') {
-                $sql = "INSERT INTO templates (name, description, thumbnail, header_bg_color, header_text_color, 
-                        body_bg_color, footer_bg_color, footer_text_color, primary_font, product_cols, 
-                        show_old_price, show_product_image, badge_style, layout_style, custom_css, status) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO templates (name, description, header_bg_color, header_text_color, 
+                        header_show_logo, header_show_phone, header_layout, header_height,
+                        body_bg_color, body_text_color, product_cols_mobile, product_cols_desktop,
+                        product_card_bg, product_card_border, product_card_radius,
+                        product_name_color, product_price_color, product_old_price_color,
+                        show_old_price, show_product_image, badge_style, badge_bg_color, badge_text_color,
+                        layout_style, primary_font, secondary_font, title_size,
+                        footer_bg_color, footer_text_color, footer_show_address, footer_show_phone,
+                        footer_show_whatsapp, footer_show_website, footer_show_social,
+                        custom_css, custom_html_header, custom_html_footer, is_featured, sort_order,
+                        plan_restriction, status, created_by) 
+                        VALUES (" . implode(',', array_fill(0, count($data), '?')) . ")";
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute(array_values($data));
                 $templateId = $pdo->lastInsertId();
                 echo json_encode(['success' => true, 'message' => 'Template criado!', 'id' => $templateId]);
             } else {
-                $sql = "UPDATE templates SET name=?, description=?, header_bg_color=?, header_text_color=?, 
-                        body_bg_color=?, footer_bg_color=?, footer_text_color=?, primary_font=?, product_cols=?, 
-                        show_old_price=?, show_product_image=?, badge_style=?, layout_style=?, custom_css=?, status=?";
-                
-                $params = array_values($data);
-                
-                if (!empty($_FILES['thumbnail']['name'])) {
-                    $sql .= ", thumbnail=?";
-                    $params[] = $data['thumbnail'];
+                $setParts = [];
+                $params = [];
+                foreach ($data as $key => $value) {
+                    $setParts[] = "$key = ?";
+                    $params[] = $value;
                 }
-                
-                $sql .= " WHERE id=?";
+                $sql = "UPDATE templates SET " . implode(', ', $setParts) . " WHERE id = ?";
                 $params[] = $_POST['id'];
-                
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute($params);
                 
                 echo json_encode(['success' => true, 'message' => 'Template atualizado!']);
-            }
-        } elseif ($postAction === 'delete') {
-            $stmt = $pdo->prepare("DELETE FROM templates WHERE id = ?");
-            $stmt->execute([$_POST['id']]);
-            echo json_encode(['success' => true, 'message' => 'Template excluído!']);
-        } elseif ($postAction === 'duplicate') {
-            $stmt = $pdo->prepare("SELECT * FROM templates WHERE id = ?");
-            $stmt->execute([$_POST['id']]);
-            $template = $stmt->fetch();
-            
-            if ($template) {
-                $sql = "INSERT INTO templates (name, description, thumbnail, header_bg_color, header_text_color, 
-                        body_bg_color, footer_bg_color, footer_text_color, primary_font, product_cols, 
-                        show_old_price, show_product_image, badge_style, layout_style, custom_css, status) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([
-                    $template['name'] . ' (Cópia)',
-                    $template['description'],
-                    $template['thumbnail'],
-                    $template['header_bg_color'],
-                    $template['header_text_color'],
-                    $template['body_bg_color'],
-                    $template['footer_bg_color'],
-                    $template['footer_text_color'],
-                    $template['primary_font'],
-                    $template['product_cols'],
-                    $template['show_old_price'],
-                    $template['show_product_image'],
-                    $template['badge_style'],
-                    $template['layout_style'],
-                    $template['custom_css'],
-                    $template['status']
-                ]);
-                echo json_encode(['success' => true, 'message' => 'Template duplicado!']);
             }
         }
     } catch (Exception $e) {
